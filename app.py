@@ -9,7 +9,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
 logging.info("🚀 App started")
 
 # ---------------- SECRETS ---------------- #
@@ -19,7 +18,7 @@ try:
     OWNER_PASSWORD = st.secrets["OWNER_PASSWORD"]
     logging.info("✅ Secrets loaded")
 except Exception:
-    st.error("Secrets not found. Add them in Streamlit Cloud → Settings → Secrets")
+    st.error("Secrets missing. Add them in Streamlit Cloud → Settings → Secrets")
     logging.error("❌ Secrets missing")
     st.stop()
 
@@ -64,7 +63,6 @@ def get_last_balance(shop_id):
         .eq("shop_id", shop_id) \
         .order("created_at", desc=True) \
         .limit(1).execute()
-
     return float(res.data[0]["balance_after_transaction"]) if res.data else 0.0
 
 # ---------------- UI ---------------- #
@@ -96,7 +94,10 @@ with tabs[0]:
     st.divider()
     st.subheader("📋 Shops List")
     shops = get_shops()
-    st.dataframe(pd.DataFrame(shops), use_container_width=True)
+    if shops:
+        st.dataframe(pd.DataFrame(shops), use_container_width=True)
+    else:
+        st.info("No shops found")
 
 # ==================== DAILY ENTRY ==================== #
 with tabs[1]:
@@ -114,14 +115,11 @@ with tabs[1]:
     txn_date = st.date_input("Transaction Date", date.today())
 
     c1, c2, c3 = st.columns(3)
-
     with c1:
         delivered = st.number_input("Cylinders Delivered", min_value=0)
         empty_received = st.number_input("Empty Cylinders Received", min_value=0)
-
     with c2:
         price = st.number_input("Price per Cylinder", min_value=0.0)
-
     with c3:
         cash = st.number_input("Payment Cash", min_value=0.0)
         upi = st.number_input("Payment UPI", min_value=0.0)
@@ -137,10 +135,9 @@ with tabs[1]:
 
     if st.button("Save Entry"):
         logging.info("💾 Saving transaction")
-
         supabase.table("daily_transactions").insert({
             "shop_id": shop_id,
-            "transaction_date": txn_date.isoformat(),  # FIXED
+            "transaction_date": txn_date.isoformat(),  # JSON-safe
             "cylinders_delivered": delivered,
             "empty_cylinders_received": empty_received,
             "price_per_cylinder": price,
@@ -149,7 +146,6 @@ with tabs[1]:
             "payment_upi": upi,
             "balance_after_transaction": balance
         }).execute()
-
         logging.info("✅ Transaction saved")
         st.success("Transaction saved")
 
@@ -168,7 +164,6 @@ with tabs[2]:
 
     if st.button("Generate Report"):
         logging.info("📊 Generating report")
-
         res = supabase.table("daily_transactions") \
             .select("*") \
             .eq("shop_id", shop_id) \
@@ -179,37 +174,42 @@ with tabs[2]:
 
         if not res.data:
             st.warning("No records found")
-            logging.warning("No data")
+            logging.warning("No data for selected range")
         else:
             df = pd.DataFrame(res.data)
             st.dataframe(df, use_container_width=True)
 
-            # ---- CALCULATIONS ---- #
+            # -------- CALCULATIONS -------- #
             total_delivered = int(df["cylinders_delivered"].sum())
             total_empty_received = int(df["empty_cylinders_received"].sum())
             empty_pending = total_delivered - total_empty_received
+
             total_amount = df["total_amount"].sum()
-            total_paid = (df["payment_cash"] + df["payment_upi"]).sum()
+            total_cash = df["payment_cash"].sum()
+            total_upi = df["payment_upi"].sum()
+            total_paid = total_cash + total_upi
+
             balance = df.iloc[-1]["balance_after_transaction"]
 
+            # -------- SUMMARY -------- #
             st.subheader("📌 Summary")
 
             col1, col2, col3 = st.columns(3)
-
             with col1:
                 st.metric("Cylinders Delivered", total_delivered)
                 st.metric("Empty Received", total_empty_received)
-
-            with col2:
                 st.metric("Empty Cylinders Pending", empty_pending)
 
-            with col3:
+            with col2:
                 st.metric("Total Amount", f"₹{total_amount:,.2f}")
+                st.metric("Paid in Cash", f"₹{total_cash:,.2f}")
+                st.metric("Paid in UPI", f"₹{total_upi:,.2f}")
+
+            with col3:
                 st.metric("Total Paid", f"₹{total_paid:,.2f}")
+                st.metric("Balance", f"₹{balance:,.2f}")
 
-            st.metric("Balance", f"₹{balance:,.2f}")
-
-            # ---- ALERTS ---- #
+            # -------- ALERTS -------- #
             if empty_pending > 0:
                 st.warning(f"⚠️ {empty_pending} empty cylinders yet to be returned")
             elif empty_pending < 0:
