@@ -156,7 +156,7 @@ with tabs[1]:
 
         supabase.table("daily_transactions").insert({
             "shop_id": shop_id,
-            "transaction_date": txn_date,
+            "transaction_date": txn_date.isoformat(),
             "cylinders_delivered": delivered,
             "empty_cylinders_received": empty_received,
             "price_per_cylinder": price,
@@ -209,3 +209,4 @@ with tabs[2]:
             st.metric("Balance", f"₹{df.iloc[-1]['balance_after_transaction']:,.2f}")
 
             logging.info("✅ Report generated successfully")
+
