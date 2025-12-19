@@ -94,22 +94,45 @@ shop_map = {s["shop_name"]: s for s in shops}
 if task == "🚚 Deliver Cylinders":
     st.header("🚚 Deliver Cylinders")
 
-    shop = shop_map[st.selectbox("🏪 Select Shop", shop_map.keys())]
-    txn_date = st.date_input("📅 Date", date.today())
+    shop = shop_map[st.selectbox("🏪 Select Shop", shop_map.keys(), key="d_shop")]
+    txn_date = st.date_input("📅 Date", date.today(), key="d_date")
 
+    # -------- Fetch Previous Balance --------
+    txns = get_transactions(shop["shop_id"])
+    prev_balance = txns[-1]["balance_after_transaction"] if txns else 0
+
+    # -------- Input --------
     st.subheader("📦 Cylinders")
-    delivered = st.number_input("Delivered", 0)
-    empty = st.number_input("Empty Received", 0)
+    delivered = st.number_input("Delivered", min_value=0, key="d_delivered")
+    empty = st.number_input("Empty Received", min_value=0, key="d_empty")
 
     st.subheader("💰 Payment")
-    price = st.number_input("Price per Cylinder", 0.0)
-    cash = st.number_input("Cash Paid", 0.0)
-    upi = st.number_input("UPI Paid", 0.0)
+    price = st.number_input("Price per Cylinder", min_value=0.0, key="d_price")
+    cash = st.number_input("Cash Paid", min_value=0.0, key="d_cash")
+    upi = st.number_input("UPI Paid", min_value=0.0, key="d_upi")
 
-    total = delivered * price
+    # -------- Live Calculations --------
+    today_amount = delivered * price
+    paid_today = cash + upi
+    new_balance = prev_balance + today_amount - paid_today
 
-    st.info(f"Total Amount: Rs. {total:.2f}")
+    # -------- Live Summary (VERY IMPORTANT) --------
+    st.subheader("📌 Today Summary")
 
+    st.info(f"🧾 Today Amount: Rs. {today_amount:.2f}")
+    st.success(f"💵 Paid Today: Rs. {paid_today:.2f}")
+
+    if prev_balance > 0:
+        st.warning(f"📦 Previous Balance: Rs. {prev_balance:.2f}")
+    else:
+        st.info("📦 Previous Balance: Rs. 0.00")
+
+    if new_balance > 0:
+        st.error(f"⚠️ Balance After Entry: Rs. {new_balance:.2f}")
+    else:
+        st.success("✅ No Balance Pending")
+
+    # -------- Save --------
     if st.button("✅ SAVE DELIVERY", use_container_width=True):
         supabase.table("daily_transactions").insert({
             "shop_id": shop["shop_id"],
@@ -117,13 +140,13 @@ if task == "🚚 Deliver Cylinders":
             "cylinders_delivered": delivered,
             "empty_cylinders_received": empty,
             "price_per_cylinder": price,
-            "total_amount": total,
+            "total_amount": today_amount,
             "payment_cash": cash,
             "payment_upi": upi,
-            "balance_after_transaction": 0
+            "balance_after_transaction": new_balance
         }).execute()
-        recalc_balance(shop["shop_id"])
-        st.success("Delivery saved")
+
+        st.success("Delivery saved successfully")
 
 # ================================================= #
 # 🛒 PURCHASE CYLINDERS
@@ -282,3 +305,4 @@ elif task == "🏪 Manage Shops":
 
     with st.expander("📄 Existing Shops"):
         st.dataframe(pd.DataFrame(shops))
+
