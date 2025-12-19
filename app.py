@@ -5,7 +5,6 @@ from datetime import date
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import calendar
 import streamlit.components.v1 as components
 
 # ---------------- CONFIG ---------------- #
@@ -56,102 +55,55 @@ def recalc_balance(shop_id):
             .eq("transaction_id", t["transaction_id"]) \
             .execute()
 
-def generate_invoice_pdf(shop, summary):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(50, 800, "INVOICE")
-
-    c.setFont("Helvetica", 10)
-    c.drawString(50, 780, "Gas Cylinder Delivery Report")
-    c.drawString(50, 750, f"Shop: {shop['shop_name']}")
-    c.drawString(50, 735, f"Mobile: {shop['mobile_number']}")
-    c.drawString(50, 720, f"Address: {shop['address']}")
-    c.drawString(50, 705, f"Period: {summary['From']} to {summary['To']}")
-
-    c.line(50, 690, 550, 690)
-
-    quantity_fields = {"Cylinders Delivered", "Empty Received", "Empty Pending"}
-    money_fields = {"Total Amount", "Cash Paid", "UPI Paid", "Balance"}
-
-    y = 660
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(50, y, "Description")
-    c.drawRightString(530, y, "Value")
-    y -= 20
-
-    c.setFont("Helvetica", 10)
-    for k, v in summary.items():
-        if k in ["From", "To"]:
-            continue
-        if k in quantity_fields:
-            val = str(int(v))
-        elif k in money_fields:
-            val = f"Rs. {float(v):,.2f}"
-        else:
-            val = str(v)
-
-        c.drawString(50, y, k)
-        c.drawRightString(530, y, val)
-        y -= 18
-
-    c.setFont("Helvetica", 9)
-    c.drawString(50, 80, "This is a system-generated invoice.")
-    c.drawString(50, 65, "Thank you for your business.")
-
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-    return buffer
-
-def whatsapp_text(shop, summary):
-    return f"""
-Gas Cylinder Delivery Report
-
-Shop: {shop['shop_name']}
-Period: {summary['From']} to {summary['To']}
-
-Delivered: {summary['Cylinders Delivered']}
-Empty Received: {summary['Empty Received']}
-Empty Pending: {summary['Empty Pending']}
-
-Total Amount: Rs. {summary['Total Amount']:.2f}
-Paid (Cash): Rs. {summary['Cash Paid']:.2f}
-Paid (UPI): Rs. {summary['UPI Paid']:.2f}
-Balance Due: Rs. {summary['Balance']:.2f}
-
-Thank you.
-""".strip()
-
 def copy_to_clipboard(text):
     components.html(
         f"""
         <textarea id="copytext" style="position:absolute; left:-1000px;">{text}</textarea>
         <button onclick="copyText()">📋 Copy to Clipboard</button>
-
         <script>
         function copyText() {{
             var copyText = document.getElementById("copytext");
             copyText.select();
             copyText.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(copyText.value);
-            alert("Copied to clipboard!");
+            alert("Copied!");
         }}
         </script>
         """,
         height=80,
     )
 
+def generate_simple_invoice(title, summary_lines):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, 800, title)
+
+    y = 750
+    c.setFont("Helvetica", 11)
+    for line in summary_lines:
+        c.drawString(50, y, line)
+        y -= 22
+
+    c.setFont("Helvetica", 9)
+    c.drawString(50, 80, "System generated report")
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
+
 # ---------------- UI ---------------- #
-st.title("🛢️ Gas Cylinder Delivery Management")
+st.title("🛢️ Gas Cylinder Business Management")
 
 tabs = st.tabs([
     "🏪 Shops",
-    "📝 Daily Entry",
-    "✏️ Edit / Delete",
-    "📊 Shop Report",
-    "📅 Monthly Analysis"
+    "📝 Daily Delivery",
+    "✏️ Edit / Delete Delivery",
+    "📊 Delivery Report",
+    "🛒 Cylinder Purchase",
+    "📊 Purchase Report"
 ])
 
 # ================= SHOPS ================= #
@@ -171,14 +123,14 @@ with tabs[0]:
 
     st.dataframe(pd.DataFrame(get_shops()), use_container_width=True)
 
-# ================= DAILY ENTRY ================= #
+# ================= DAILY DELIVERY ================= #
 with tabs[1]:
     shops = get_shops()
     shop_map = {s["shop_name"]: s for s in shops}
     shop = shop_map[st.selectbox("Shop", shop_map.keys())]
 
     txn_date = st.date_input("Date", date.today())
-    delivered = st.number_input("Delivered", 0)
+    delivered = st.number_input("Cylinders Delivered", 0)
     empty = st.number_input("Empty Received", 0)
     price = st.number_input("Price per Cylinder", 0.0)
     cash = st.number_input("Cash Paid", 0.0)
@@ -186,7 +138,7 @@ with tabs[1]:
 
     total = delivered * price
 
-    if st.button("Save Entry"):
+    if st.button("Save Delivery"):
         supabase.table("daily_transactions").insert({
             "shop_id": shop["shop_id"],
             "transaction_date": txn_date.isoformat(),
@@ -201,7 +153,7 @@ with tabs[1]:
         recalc_balance(shop["shop_id"])
         st.success("Saved")
 
-# ================= EDIT / DELETE ================= #
+# ================= EDIT DELIVERY ================= #
 with tabs[2]:
     shop = shop_map[st.selectbox("Shop", shop_map.keys(), key="edit_shop")]
     txns = get_transactions(shop["shop_id"])
@@ -213,24 +165,8 @@ with tabs[2]:
         df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.date
         st.dataframe(df, use_container_width=True)
 
-        # ---- NEW: DATE-BASED SELECTION ---- #
-        selected_date = st.selectbox(
-            "Select Date",
-            sorted(df["transaction_date"].unique())
-        )
-
-        day_rows = df[df["transaction_date"] == selected_date]
-
-        if len(day_rows) > 1:
-            st.info("Multiple entries found for this date")
-            row_idx = st.selectbox(
-                "Select Entry",
-                day_rows.index,
-                format_func=lambda i: f"Entry {list(day_rows.index).index(i)+1}"
-            )
-            row = day_rows.loc[row_idx]
-        else:
-            row = day_rows.iloc[0]
+        selected_date = st.selectbox("Select Date", sorted(df["transaction_date"].unique()))
+        row = df[df["transaction_date"] == selected_date].iloc[0]
 
         with st.form("edit_form"):
             delivered = st.number_input("Delivered", value=int(row["cylinders_delivered"]))
@@ -262,17 +198,14 @@ with tabs[2]:
                 st.success("Deleted")
                 st.rerun()
 
-# ================= SHOP REPORT ================= #
+# ================= DELIVERY REPORT ================= #
 with tabs[3]:
     shop = shop_map[st.selectbox("Shop", shop_map.keys(), key="rep")]
     f, t = st.columns(2)
     from_date = f.date_input("From")
     to_date = t.date_input("To")
 
-    if st.button("Generate Report"):
-        st.session_state.show_report = True
-
-    if st.session_state.show_report:
+    if st.button("Generate Delivery Report"):
         data = supabase.table("daily_transactions") \
             .select("*") \
             .eq("shop_id", shop["shop_id"]) \
@@ -284,78 +217,70 @@ with tabs[3]:
             st.warning("No records")
         else:
             df = pd.DataFrame(data)
+            st.dataframe(df, use_container_width=True)
 
-            summary = {
-                "From": from_date.strftime("%d-%m-%Y"),
-                "To": to_date.strftime("%d-%m-%Y"),
-                "Cylinders Delivered": int(df["cylinders_delivered"].sum()),
-                "Empty Received": int(df["empty_cylinders_received"].sum()),
-                "Empty Pending": int(df["cylinders_delivered"].sum() - df["empty_cylinders_received"].sum()),
-                "Total Amount": df["total_amount"].sum(),
-                "Cash Paid": df["payment_cash"].sum(),
-                "UPI Paid": df["payment_upi"].sum(),
-                "Balance": df.iloc[-1]["balance_after_transaction"]
-            }
-
-            st.subheader("📦 Cylinders")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Delivered", summary["Cylinders Delivered"])
-            c2.metric("Empty Received", summary["Empty Received"])
-            c3.metric("Pending", summary["Empty Pending"])
-
-            st.subheader("💰 Payments")
-            p1, p2, p3 = st.columns(3)
-            p1.metric("Total", f"Rs. {summary['Total Amount']:.2f}")
-            p2.metric("Cash", f"Rs. {summary['Cash Paid']:.2f}")
-            p3.metric("UPI", f"Rs. {summary['UPI Paid']:.2f}")
-
-            st.error(f"Balance Due: Rs. {summary['Balance']:.2f}")
-
-            pdf = generate_invoice_pdf(shop, summary)
-            st.download_button("📄 Download Invoice PDF", pdf, f"{shop['shop_name']}_invoice.pdf")
-
-            msg = whatsapp_text(shop, summary)
-            st.subheader("📱 Copy to WhatsApp")
-            st.text_area("Message", msg, height=220)
-            copy_to_clipboard(msg)
-
-# ================= MONTHLY ANALYSIS ================= #
+# ================= CYLINDER PURCHASE ================= #
 with tabs[4]:
-    st.subheader("📅 Monthly Analysis (All Customers)")
+    st.subheader("Cylinder Purchase Entry")
 
-    month_name = st.selectbox("Month", list(calendar.month_name)[1:])
-    year = st.selectbox("Year", range(2023, 2031))
+    p_date = st.date_input("Purchase Date", date.today())
+    purchased = st.number_input("Cylinders Purchased", 0)
+    empty_returned = st.number_input("Empty Cylinders Returned", 0)
+    price = st.number_input("Price per Cylinder", 0.0)
+    cash = st.number_input("Cash Paid", 0.0)
+    upi = st.number_input("UPI Paid", 0.0)
 
-    month = list(calendar.month_name).index(month_name)
-    start = f"{year}-{month:02d}-01"
-    end = f"{year}-{month:02d}-31"
+    total = purchased * price
+    outstanding = total - (cash + upi)
 
-    data = supabase.table("daily_transactions") \
-        .select("transaction_date, cylinders_delivered, empty_cylinders_received, total_amount, payment_cash, payment_upi, balance_after_transaction") \
-        .gte("transaction_date", start) \
-        .lte("transaction_date", end) \
-        .execute().data
+    st.info(f"Total Amount: Rs. {total:.2f}")
+    st.warning(f"Outstanding: Rs. {outstanding:.2f}")
 
-    if not data:
-        st.info("No data for selected month")
-    else:
-        df = pd.DataFrame(data)
-        df["date"] = pd.to_datetime(df["transaction_date"])
+    if st.button("Save Purchase"):
+        supabase.table("cylinder_purchases").insert({
+            "purchase_date": p_date.isoformat(),
+            "cylinders_purchased": purchased,
+            "empty_cylinders_returned": empty_returned,
+            "price_per_cylinder": price,
+            "total_amount": total,
+            "payment_cash": cash,
+            "payment_upi": upi,
+            "outstanding_amount": outstanding
+        }).execute()
+        st.success("Purchase saved")
 
-        payments = df.groupby("date").agg({
-            "total_amount": "sum",
-            "payment_cash": "sum",
-            "payment_upi": "sum",
-            "balance_after_transaction": "max"
-        })
+# ================= PURCHASE REPORT ================= #
+with tabs[5]:
+    f, t = st.columns(2)
+    from_date = f.date_input("From Date")
+    to_date = t.date_input("To Date")
 
-        st.subheader("💰 Payments Trend")
-        st.line_chart(payments)
+    if st.button("Generate Purchase Report"):
+        data = supabase.table("cylinder_purchases") \
+            .select("*") \
+            .gte("purchase_date", from_date.isoformat()) \
+            .lte("purchase_date", to_date.isoformat()) \
+            .execute().data
 
-        qty = df.groupby("date").agg({
-            "cylinders_delivered": "sum",
-            "empty_cylinders_received": "sum"
-        })
+        if not data:
+            st.warning("No records")
+        else:
+            df = pd.DataFrame(data)
+            st.dataframe(df, use_container_width=True)
 
-        st.subheader("📦 Quantity Movement")
-        st.bar_chart(qty)
+            summary = [
+                f"Period: {from_date} to {to_date}",
+                f"Cylinders Purchased: {df['cylinders_purchased'].sum()}",
+                f"Empty Returned: {df['empty_cylinders_returned'].sum()}",
+                f"Total Amount: Rs. {df['total_amount'].sum():.2f}",
+                f"Cash Paid: Rs. {df['payment_cash'].sum():.2f}",
+                f"UPI Paid: Rs. {df['payment_upi'].sum():.2f}",
+                f"Outstanding: Rs. {df['outstanding_amount'].sum():.2f}"
+            ]
+
+            pdf = generate_simple_invoice("Cylinder Purchase Report", summary)
+            st.download_button("📄 Download Purchase PDF", pdf, "purchase_report.pdf")
+
+            msg = "\n".join(summary)
+            st.text_area("WhatsApp Text", msg, height=200)
+            copy_to_clipboard(msg)
