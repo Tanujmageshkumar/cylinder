@@ -55,6 +55,28 @@ def recalc_balance(shop_id):
             .eq("transaction_id", t["transaction_id"]) \
             .execute()
 
+def whatsapp_text(shop, summary):
+    return f"""
+Gas Cylinder Delivery Report
+
+Shop: {shop['shop_name']}
+Mobile: {shop['mobile_number']}
+Period: {summary['From']} to {summary['To']}
+
+Cylinders Delivered: {summary['Cylinders Delivered']}
+Empty Received: {summary['Empty Received']}
+Empty Pending: {summary['Empty Pending']}
+
+Total Amount: Rs. {summary['Total Amount']:.2f}
+Cash Paid: Rs. {summary['Cash Paid']:.2f}
+UPI Paid: Rs. {summary['UPI Paid']:.2f}
+
+Balance Due: Rs. {summary['Balance']:.2f}
+
+Thank you.
+""".strip()
+
+
 def copy_to_clipboard(text):
     components.html(
         f"""
@@ -466,6 +488,7 @@ elif task == "🏪 Manage Shops":
 
     with st.expander("📄 Existing Shops"):
         st.dataframe(pd.DataFrame(shops))
+
 
 
 
