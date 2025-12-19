@@ -71,6 +71,71 @@ def copy_to_clipboard(text):
         """,
         height=60,
     )
+    
+def generate_invoice_pdf(shop, summary):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+
+    # -------- HEADER --------
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, 800, "INVOICE")
+
+    c.setFont("Helvetica", 10)
+    c.drawString(50, 780, "Gas Cylinder Delivery Report")
+
+    c.drawString(50, 750, f"Shop Name : {shop['shop_name']}")
+    c.drawString(50, 735, f"Mobile    : {shop['mobile_number']}")
+    c.drawString(50, 720, f"Address   : {shop['address']}")
+    c.drawString(50, 705, f"Period    : {summary['From']} to {summary['To']}")
+
+    c.line(50, 690, 550, 690)
+
+    # -------- TABLE --------
+    quantity_fields = {
+        "Cylinders Delivered",
+        "Empty Received",
+        "Empty Pending"
+    }
+
+    money_fields = {
+        "Total Amount",
+        "Cash Paid",
+        "UPI Paid",
+        "Balance"
+    }
+
+    y = 660
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(50, y, "Description")
+    c.drawRightString(530, y, "Value")
+    y -= 20
+
+    c.setFont("Helvetica", 10)
+
+    for key, value in summary.items():
+        if key in ["From", "To"]:
+            continue
+
+        if key in quantity_fields:
+            display = str(int(value))
+        elif key in money_fields:
+            display = f"Rs. {float(value):,.2f}"
+        else:
+            display = str(value)
+
+        c.drawString(50, y, key)
+        c.drawRightString(530, y, display)
+        y -= 18
+
+    # -------- FOOTER --------
+    c.setFont("Helvetica", 9)
+    c.drawString(50, 80, "This is a system-generated invoice.")
+    c.drawString(50, 65, "Thank you for your business.")
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
 
 # ================= SIDEBAR NAV ================= #
 task = st.sidebar.radio(
@@ -401,5 +466,6 @@ elif task == "🏪 Manage Shops":
 
     with st.expander("📄 Existing Shops"):
         st.dataframe(pd.DataFrame(shops))
+
 
 
