@@ -48,11 +48,11 @@ def get_transactions(shop_id):
 
 def recalc_balance(shop_id):
     txns = get_transactions(shop_id)
-    balance = 0
+    bal = 0
     for t in txns:
-        balance += t["total_amount"] - (t["payment_cash"] + t["payment_upi"])
+        bal += t["total_amount"] - (t["payment_cash"] + t["payment_upi"])
         supabase.table("daily_transactions") \
-            .update({"balance_after_transaction": balance}) \
+            .update({"balance_after_transaction": bal}) \
             .eq("transaction_id", t["transaction_id"]) \
             .execute()
 
@@ -210,10 +210,27 @@ with tabs[2]:
         st.info("No entries")
     else:
         df = pd.DataFrame(txns)
+        df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.date
         st.dataframe(df, use_container_width=True)
 
-        tid = st.selectbox("Select Transaction", df["transaction_id"])
-        row = df[df["transaction_id"] == tid].iloc[0]
+        # ---- NEW: DATE-BASED SELECTION ---- #
+        selected_date = st.selectbox(
+            "Select Date",
+            sorted(df["transaction_date"].unique())
+        )
+
+        day_rows = df[df["transaction_date"] == selected_date]
+
+        if len(day_rows) > 1:
+            st.info("Multiple entries found for this date")
+            row_idx = st.selectbox(
+                "Select Entry",
+                day_rows.index,
+                format_func=lambda i: f"Entry {list(day_rows.index).index(i)+1}"
+            )
+            row = day_rows.loc[row_idx]
+        else:
+            row = day_rows.iloc[0]
 
         with st.form("edit_form"):
             delivered = st.number_input("Delivered", value=int(row["cylinders_delivered"]))
@@ -231,13 +248,16 @@ with tabs[2]:
                     "total_amount": delivered * price,
                     "payment_cash": cash,
                     "payment_upi": upi
-                }).eq("transaction_id", tid).execute()
+                }).eq("transaction_id", row["transaction_id"]).execute()
                 recalc_balance(shop["shop_id"])
                 st.success("Updated")
                 st.rerun()
 
             if col2.form_submit_button("Delete"):
-                supabase.table("daily_transactions").delete().eq("transaction_id", tid).execute()
+                supabase.table("daily_transactions") \
+                    .delete() \
+                    .eq("transaction_id", row["transaction_id"]) \
+                    .execute()
                 recalc_balance(shop["shop_id"])
                 st.success("Deleted")
                 st.rerun()
