@@ -190,9 +190,9 @@ elif task == "🛒 Purchase Cylinders":
 elif task == "📊 Delivery Report":
     st.header("📊 Delivery Report")
 
-    shop = shop_map[st.selectbox("🏪 Shop", shop_map.keys())]
-    from_date = st.date_input("From Date")
-    to_date = st.date_input("To Date")
+    shop = shop_map[st.selectbox("🏪 Select Shop", shop_map.keys(), key="rep_shop")]
+    from_date = st.date_input("From Date", key="rep_from")
+    to_date = st.date_input("To Date", key="rep_to")
 
     if st.button("📊 GENERATE REPORT", use_container_width=True):
         data = supabase.table("daily_transactions") \
@@ -203,25 +203,76 @@ elif task == "📊 Delivery Report":
             .execute().data
 
         if not data:
-            st.warning("No records")
+            st.warning("No records found")
         else:
             df = pd.DataFrame(data)
 
-            st.subheader("📌 Summary")
-            st.metric("Delivered", int(df["cylinders_delivered"].sum()))
-            st.metric("Balance", f"Rs. {df.iloc[-1]['balance_after_transaction']:.2f}")
+            # -------- SUMMARY (UNCHANGED LOGIC) --------
+            delivered = int(df["cylinders_delivered"].sum())
+            empty_received = int(df["empty_cylinders_received"].sum())
+            empty_pending = delivered - empty_received
 
-            with st.expander("📄 View Details"):
-                st.dataframe(df)
+            total_amount = df["total_amount"].sum()
+            cash_paid = df["payment_cash"].sum()
+            upi_paid = df["payment_upi"].sum()
+            total_paid = cash_paid + upi_paid
+            balance = df.iloc[-1]["balance_after_transaction"]
+
+            # -------- MOBILE SUMMARY --------
+            st.subheader("📦 Cylinder Summary")
+            st.metric("Delivered", delivered)
+            st.metric("Empty Received", empty_received)
+            st.metric("Empty Pending", empty_pending)
+
+            st.subheader("💰 Payment Summary")
+            st.metric("Total Amount", f"Rs. {total_amount:.2f}")
+            st.metric("Cash Paid", f"Rs. {cash_paid:.2f}")
+            st.metric("UPI Paid", f"Rs. {upi_paid:.2f}")
+            st.metric("Total Paid", f"Rs. {total_paid:.2f}")
+
+            if balance > 0:
+                st.error(f"Balance Due: Rs. {balance:.2f}")
+            else:
+                st.success("No balance pending")
+
+            # -------- PDF --------
+            summary_for_pdf = {
+                "From": from_date.strftime("%d-%m-%Y"),
+                "To": to_date.strftime("%d-%m-%Y"),
+                "Cylinders Delivered": delivered,
+                "Empty Received": empty_received,
+                "Empty Pending": empty_pending,
+                "Total Amount": total_amount,
+                "Cash Paid": cash_paid,
+                "UPI Paid": upi_paid,
+                "Balance": balance
+            }
+
+            pdf = generate_invoice_pdf(shop, summary_for_pdf)
+            st.download_button(
+                "📄 Download Invoice PDF",
+                pdf,
+                f"{shop['shop_name']}_delivery_report.pdf",
+                use_container_width=True
+            )
+
+            # -------- WHATSAPP --------
+            msg = whatsapp_text(shop, summary_for_pdf)
+            st.subheader("📱 WhatsApp Message")
+            st.text_area("Message", msg, height=220)
+            copy_to_clipboard(msg)
+
+            with st.expander("📄 View Detailed Entries"):
+                st.dataframe(df, use_container_width=True)
 
 # ================================================= #
 # 📊 PURCHASE REPORT
 # ================================================= #
 elif task == "📊 Purchase Report":
-    st.header("📊 Purchase Report")
+    st.header("📊 Cylinder Purchase Report")
 
-    from_date = st.date_input("From Date")
-    to_date = st.date_input("To Date")
+    from_date = st.date_input("From Date", key="pur_from")
+    to_date = st.date_input("To Date", key="pur_to")
 
     if st.button("📊 GENERATE PURCHASE REPORT", use_container_width=True):
         data = supabase.table("cylinder_purchases") \
@@ -231,15 +282,60 @@ elif task == "📊 Purchase Report":
             .execute().data
 
         if not data:
-            st.warning("No records")
+            st.warning("No records found")
         else:
             df = pd.DataFrame(data)
 
-            st.metric("Total Purchased", int(df["cylinders_purchased"].sum()))
-            st.metric("Outstanding", f"Rs. {df['outstanding_amount'].sum():.2f}")
+            purchased = int(df["cylinders_purchased"].sum())
+            empty_returned = int(df["empty_cylinders_returned"].sum())
+            total_amount = df["total_amount"].sum()
+            cash_paid = df["payment_cash"].sum()
+            upi_paid = df["payment_upi"].sum()
+            outstanding = df["outstanding_amount"].sum()
 
-            with st.expander("📄 View Details"):
-                st.dataframe(df)
+            # -------- MOBILE SUMMARY --------
+            st.subheader("📦 Purchase Summary")
+            st.metric("Cylinders Purchased", purchased)
+            st.metric("Empty Returned", empty_returned)
+
+            st.subheader("💰 Payment Summary")
+            st.metric("Total Amount", f"Rs. {total_amount:.2f}")
+            st.metric("Cash Paid", f"Rs. {cash_paid:.2f}")
+            st.metric("UPI Paid", f"Rs. {upi_paid:.2f}")
+
+            if outstanding > 0:
+                st.error(f"Outstanding: Rs. {outstanding:.2f}")
+            else:
+                st.success("No outstanding amount")
+
+            # -------- PDF --------
+            summary_lines = [
+                f"Period: {from_date} to {to_date}",
+                f"Cylinders Purchased: {purchased}",
+                f"Empty Returned: {empty_returned}",
+                f"Total Amount: Rs. {total_amount:.2f}",
+                f"Cash Paid: Rs. {cash_paid:.2f}",
+                f"UPI Paid: Rs. {upi_paid:.2f}",
+                f"Outstanding: Rs. {outstanding:.2f}"
+            ]
+
+            pdf = generate_simple_invoice("Cylinder Purchase Report", summary_lines)
+            st.download_button(
+                "📄 Download Purchase PDF",
+                pdf,
+                "purchase_report.pdf",
+                use_container_width=True
+            )
+
+            # -------- WHATSAPP --------
+            msg = "\n".join(summary_lines)
+            st.subheader("📱 WhatsApp Message")
+            st.text_area("Message", msg, height=200)
+            copy_to_clipboard(msg)
+
+            with st.expander("📄 View Detailed Entries"):
+                st.dataframe(df, use_container_width=True)
+
 
 # ================================================= #
 # ✏️ EDIT / DELETE
@@ -305,4 +401,5 @@ elif task == "🏪 Manage Shops":
 
     with st.expander("📄 Existing Shops"):
         st.dataframe(pd.DataFrame(shops))
+
 
