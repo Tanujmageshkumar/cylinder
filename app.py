@@ -3,67 +3,99 @@ from supabase import create_client
 import pandas as pd
 from datetime import date
 import logging
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 # ---------------- LOGGING ---------------- #
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logging.info("🚀 App started")
+logging.basicConfig(level=logging.INFO)
+logging.info("App started")
 
 # ---------------- SECRETS ---------------- #
-try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    OWNER_PASSWORD = st.secrets["OWNER_PASSWORD"]
-    logging.info("✅ Secrets loaded")
-except Exception:
-    st.error("Secrets missing. Add them in Streamlit Cloud → Settings → Secrets")
-    logging.error("❌ Secrets missing")
-    st.stop()
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+OWNER_PASSWORD = st.secrets["OWNER_PASSWORD"]
 
 # ---------------- SUPABASE ---------------- #
-try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    logging.info("✅ Supabase connected")
-except Exception as e:
-    st.error("Supabase connection failed")
-    logging.error(e)
-    st.stop()
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ---------------- STREAMLIT CONFIG ---------------- #
 st.set_page_config(page_title="Gas Cylinder Manager", layout="wide")
 
 # ---------------- AUTH ---------------- #
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+if "auth" not in st.session_state:
+    st.session_state.auth = False
 
-if not st.session_state.authenticated:
+if not st.session_state.auth:
     st.title("🔐 Owner Login")
-    password = st.text_input("Enter Password", type="password")
-
+    pwd = st.text_input("Password", type="password")
     if st.button("Login"):
-        if password == OWNER_PASSWORD:
-            st.session_state.authenticated = True
-            logging.info("🔓 Login success")
+        if pwd == OWNER_PASSWORD:
+            st.session_state.auth = True
             st.rerun()
         else:
-            logging.warning("❌ Wrong password")
             st.error("Wrong password")
     st.stop()
 
 # ---------------- HELPERS ---------------- #
 def get_shops():
-    res = supabase.table("shops").select("*").order("shop_name").execute()
-    return res.data
+    return supabase.table("shops").select("*").order("shop_name").execute().data
 
 def get_last_balance(shop_id):
     res = supabase.table("daily_transactions") \
         .select("balance_after_transaction") \
         .eq("shop_id", shop_id) \
         .order("created_at", desc=True) \
-        .limit(1).execute()
-    return float(res.data[0]["balance_after_transaction"]) if res.data else 0.0
+        .limit(1).execute().data
+    return float(res[0]["balance_after_transaction"]) if res else 0.0
+
+def generate_pdf(shop, summary_df):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, 800, "Gas Cylinder Delivery Report")
+
+    c.setFont("Helvetica", 10)
+    c.drawString(50, 780, f"Shop: {shop['shop_name']}")
+    c.drawString(50, 765, f"Mobile: {shop['mobile_number']}")
+    c.drawString(50, 750, f"Address: {shop['address']}")
+
+    y = 710
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(50, y, "Summary")
+    y -= 20
+
+    c.setFont("Helvetica", 10)
+    for _, row in summary_df.iterrows():
+        c.drawString(50, y, row["Metric"])
+        c.drawString(300, y, str(row["Value"]))
+        y -= 18
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+def build_whatsapp_text(shop, summary):
+    return f"""
+Gas Cylinder Delivery Report
+
+Shop: {shop['shop_name']}
+Period: {summary['From Date']} to {summary['To Date']}
+
+Cylinders Delivered: {summary['Cylinders Delivered']}
+Empty Received: {summary['Empty Cylinders Received']}
+Empty Pending: {summary['Empty Cylinders Pending']}
+
+Total Amount: ₹{summary['Total Amount (₹)']}
+Paid (Cash): ₹{summary['Paid in Cash (₹)']}
+Paid (UPI): ₹{summary['Paid in UPI (₹)']}
+Total Paid: ₹{summary['Total Paid (₹)']}
+Balance Due: ₹{summary['Balance (₹)']}
+
+Thank you.
+""".strip()
 
 # ---------------- UI ---------------- #
 st.title("🛢️ Gas Cylinder Delivery Management")
@@ -72,149 +104,120 @@ tabs = st.tabs(["🏪 Shops", "📝 Daily Entry", "📊 Reports"])
 
 # ==================== SHOPS ==================== #
 with tabs[0]:
-    st.subheader("➕ Add New Shop")
+    st.subheader("➕ Add Shop")
 
     with st.form("add_shop"):
-        shop_name = st.text_input("Shop Name")
+        name = st.text_input("Shop Name")
         mobile = st.text_input("Mobile Number")
         address = st.text_area("Address")
+        if st.form_submit_button("Add Shop") and name:
+            supabase.table("shops").insert({
+                "shop_name": name,
+                "mobile_number": mobile,
+                "address": address
+            }).execute()
+            st.success("Shop added")
 
-        if st.form_submit_button("Add Shop"):
-            if not shop_name:
-                st.error("Shop name is required")
-            else:
-                supabase.table("shops").insert({
-                    "shop_name": shop_name,
-                    "mobile_number": mobile,
-                    "address": address
-                }).execute()
-                logging.info(f"🏪 Shop added: {shop_name}")
-                st.success("Shop added")
-
-    st.divider()
-    st.subheader("📋 Shops List")
-    shops = get_shops()
-    if shops:
-        st.dataframe(pd.DataFrame(shops), use_container_width=True)
-    else:
-        st.info("No shops found")
+    st.subheader("📋 Shops")
+    st.dataframe(pd.DataFrame(get_shops()), use_container_width=True)
 
 # ==================== DAILY ENTRY ==================== #
 with tabs[1]:
-    st.subheader("📝 Daily Cylinder Entry")
+    st.subheader("📝 Daily Entry")
 
     shops = get_shops()
-    if not shops:
-        st.warning("Add shops first")
-        st.stop()
+    shop_map = {s["shop_name"]: s for s in shops}
+    shop_name = st.selectbox("Shop", shop_map.keys())
+    shop = shop_map[shop_name]
 
-    shop_map = {s["shop_name"]: s["shop_id"] for s in shops}
-    shop_name = st.selectbox("Select Shop", shop_map.keys())
-    shop_id = shop_map[shop_name]
+    txn_date = st.date_input("Date", date.today())
+    d, e = st.columns(2)
+    delivered = d.number_input("Cylinders Delivered", 0)
+    empty = e.number_input("Empty Received", 0)
 
-    txn_date = st.date_input("Transaction Date", date.today())
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        delivered = st.number_input("Cylinders Delivered", min_value=0)
-        empty_received = st.number_input("Empty Cylinders Received", min_value=0)
-    with c2:
-        price = st.number_input("Price per Cylinder", min_value=0.0)
-    with c3:
-        cash = st.number_input("Payment Cash", min_value=0.0)
-        upi = st.number_input("Payment UPI", min_value=0.0)
+    p, c, u = st.columns(3)
+    price = p.number_input("Price per Cylinder", 0.0)
+    cash = c.number_input("Cash Paid", 0.0)
+    upi = u.number_input("UPI Paid", 0.0)
 
     total_amount = delivered * price
-    total_paid = cash + upi
-    prev_balance = get_last_balance(shop_id)
-    balance = prev_balance + total_amount - total_paid
+    prev_balance = get_last_balance(shop["shop_id"])
+    balance = prev_balance + total_amount - (cash + upi)
 
-    st.info(f"💰 Total Amount: ₹{total_amount:,.2f}")
-    st.info(f"📌 Previous Balance: ₹{prev_balance:,.2f}")
-    st.warning(f"🔴 Balance After Entry: ₹{balance:,.2f}")
+    st.info(f"Total Amount: ₹{total_amount:,.2f}")
+    st.warning(f"Balance After Entry: ₹{balance:,.2f}")
 
     if st.button("Save Entry"):
-        logging.info("💾 Saving transaction")
         supabase.table("daily_transactions").insert({
-            "shop_id": shop_id,
-            "transaction_date": txn_date.isoformat(),  # JSON-safe
+            "shop_id": shop["shop_id"],
+            "transaction_date": txn_date.isoformat(),
             "cylinders_delivered": delivered,
-            "empty_cylinders_received": empty_received,
+            "empty_cylinders_received": empty,
             "price_per_cylinder": price,
             "total_amount": total_amount,
             "payment_cash": cash,
             "payment_upi": upi,
             "balance_after_transaction": balance
         }).execute()
-        logging.info("✅ Transaction saved")
-        st.success("Transaction saved")
+        st.success("Saved")
 
 # ==================== REPORTS ==================== #
 with tabs[2]:
-    st.subheader("📊 Shop Report")
+    st.subheader("📊 Report")
 
-    shop_name = st.selectbox("Select Shop", shop_map.keys(), key="report_shop")
-    shop_id = shop_map[shop_name]
+    shop_name = st.selectbox("Shop", shop_map.keys(), key="rshop")
+    shop = shop_map[shop_name]
 
-    c1, c2 = st.columns(2)
-    with c1:
-        from_date = st.date_input("From Date")
-    with c2:
-        to_date = st.date_input("To Date")
+    f, t = st.columns(2)
+    from_date = f.date_input("From")
+    to_date = t.date_input("To")
 
     if st.button("Generate Report"):
-        logging.info("📊 Generating report")
-        res = supabase.table("daily_transactions") \
+        data = supabase.table("daily_transactions") \
             .select("*") \
-            .eq("shop_id", shop_id) \
+            .eq("shop_id", shop["shop_id"]) \
             .gte("transaction_date", from_date.isoformat()) \
             .lte("transaction_date", to_date.isoformat()) \
             .order("transaction_date") \
-            .execute()
+            .execute().data
 
-        if not res.data:
-            st.warning("No records found")
-            logging.warning("No data for selected range")
-        else:
-            df = pd.DataFrame(res.data)
-            st.dataframe(df, use_container_width=True)
+        if not data:
+            st.warning("No records")
+            st.stop()
 
-            # -------- CALCULATIONS -------- #
-            total_delivered = int(df["cylinders_delivered"].sum())
-            total_empty_received = int(df["empty_cylinders_received"].sum())
-            empty_pending = total_delivered - total_empty_received
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True)
 
-            total_amount = df["total_amount"].sum()
-            total_cash = df["payment_cash"].sum()
-            total_upi = df["payment_upi"].sum()
-            total_paid = total_cash + total_upi
+        # -------- SUMMARY LOGIC -------- #
+        summary = {
+            "Shop Name": shop_name,
+            "From Date": from_date.strftime("%d-%m-%Y"),
+            "To Date": to_date.strftime("%d-%m-%Y"),
+            "Cylinders Delivered": int(df["cylinders_delivered"].sum()),
+            "Empty Cylinders Received": int(df["empty_cylinders_received"].sum()),
+            "Empty Cylinders Pending": int(df["cylinders_delivered"].sum() - df["empty_cylinders_received"].sum()),
+            "Total Amount (₹)": float(df["total_amount"].sum()),
+            "Paid in Cash (₹)": float(df["payment_cash"].sum()),
+            "Paid in UPI (₹)": float(df["payment_upi"].sum()),
+            "Total Paid (₹)": float(df["payment_cash"].sum() + df["payment_upi"].sum()),
+            "Balance (₹)": float(df.iloc[-1]["balance_after_transaction"])
+        }
 
-            balance = df.iloc[-1]["balance_after_transaction"]
+        summary_df = pd.DataFrame(summary.items(), columns=["Metric", "Value"])
 
-            # -------- SUMMARY -------- #
-            st.subheader("📌 Summary")
+        st.subheader("📌 Summary")
+        st.table(summary_df)
 
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Cylinders Delivered", total_delivered)
-                st.metric("Empty Received", total_empty_received)
-                st.metric("Empty Cylinders Pending", empty_pending)
+        # -------- PDF -------- #
+        pdf = generate_pdf(shop, summary_df)
+        st.download_button(
+            "📄 Export Summary as PDF",
+            data=pdf,
+            file_name=f"{shop_name}_report.pdf",
+            mime="application/pdf"
+        )
 
-            with col2:
-                st.metric("Total Amount", f"₹{total_amount:,.2f}")
-                st.metric("Paid in Cash", f"₹{total_cash:,.2f}")
-                st.metric("Paid in UPI", f"₹{total_upi:,.2f}")
-
-            with col3:
-                st.metric("Total Paid", f"₹{total_paid:,.2f}")
-                st.metric("Balance", f"₹{balance:,.2f}")
-
-            # -------- ALERTS -------- #
-            if empty_pending > 0:
-                st.warning(f"⚠️ {empty_pending} empty cylinders yet to be returned")
-            elif empty_pending < 0:
-                st.error("❌ Data error: more empty cylinders received than delivered")
-            else:
-                st.success("✅ All cylinders settled")
-
-            logging.info("✅ Report generated")
+        # -------- WHATSAPP TEXT -------- #
+        st.subheader("📱 Copy to WhatsApp")
+        whatsapp_text = build_whatsapp_text(shop, summary)
+        st.text_area("Message", whatsapp_text, height=250)
