@@ -65,6 +65,29 @@ def whatsapp_send(msg, phone):
         height=80
     )
 
+def generate_invoice_pdf(title, lines):
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, 800, title)
+
+    y = 760
+    c.setFont("Helvetica", 11)
+
+    for line in lines:
+        c.drawString(50, y, line)
+        y -= 20
+        if y < 80:
+            c.showPage()
+            y = 760
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf
+
+
 def daily_report_pdf(df, report_date):
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -266,62 +289,138 @@ elif menu == "📆 Daily Report":
 elif menu == "📊 Delivery Report":
     st.header("📊 Delivery Report")
 
-    shop_name = st.selectbox("Select Shop", shop_select_list)
+    # -------- Mobile-friendly shop search --------
+    typed = st.text_input("🔍 Type Shop Name", key="del_rep_search")
+
+    sorted_shops = sorted(
+        shop_names,
+        key=lambda x: (typed.lower() not in x.lower(), x)
+    )
+
+    shop_name = st.selectbox(
+        "🏪 Select Shop",
+        sorted_shops,
+        key="del_rep_shop"
+    )
+
     shop = shop_map[shop_name]
 
-    f = st.date_input("From Date")
-    t = st.date_input("To Date")
+    from_date = st.date_input("From Date", key="del_rep_from")
+    to_date = st.date_input("To Date", key="del_rep_to")
 
+    # -------- Fetch data --------
     data = supabase.table("daily_transactions") \
         .select("*") \
         .eq("shop_id", shop["shop_id"]) \
-        .gte("transaction_date", f.isoformat()) \
-        .lte("transaction_date", t.isoformat()) \
+        .gte("transaction_date", from_date.isoformat()) \
+        .lte("transaction_date", to_date.isoformat()) \
+        .order("transaction_date") \
         .execute().data
 
-    if data:
-        df = pd.DataFrame(data)
+    if not data:
+        st.warning("No delivery records for this period")
+        st.stop()
 
-        total_del = int(df["cylinders_delivered"].sum())
-        total_empty = int(df["empty_cylinders_received"].sum())
-        empty_pending = total_del - total_empty
-        total_cash = df["payment_cash"].sum()
-        total_upi = df["payment_upi"].sum()
-        total_paid = total_cash + total_upi
-        balance = df.iloc[-1]["balance_after_transaction"]
+    df = pd.DataFrame(data)
 
-        st.metric("Delivered", total_del)
-        st.metric("Empty Pending", empty_pending)
-        st.metric("Total Paid", f"Rs. {total_paid:.2f}")
-        st.error(f"Balance Due: Rs. {balance:.2f}")
+    # -------- Calculations --------
+    total_delivered = int(df["cylinders_delivered"].sum())
+    total_empty_received = int(df["empty_cylinders_received"].sum())
+    empty_pending = total_delivered - total_empty_received
 
-        msg = f"""
+    total_cash = df["payment_cash"].sum()
+    total_upi = df["payment_upi"].sum()
+    total_paid = total_cash + total_upi
+
+    total_amount = df["total_amount"].sum()
+    balance_due = df.iloc[-1]["balance_after_transaction"]
+
+    # -------- UI SUMMARY --------
+    st.subheader("📌 Report Summary")
+
+    st.metric("Cylinders Delivered", total_delivered)
+    st.metric("Empty Received", total_empty_received)
+    st.metric("Empty Pending", empty_pending)
+
+    st.metric("Cash Paid", f"Rs. {total_cash:.2f}")
+    st.metric("UPI Paid", f"Rs. {total_upi:.2f}")
+    st.metric("Total Paid", f"Rs. {total_paid:.2f}")
+
+    if balance_due > 0:
+        st.error(f"Balance Due: Rs. {balance_due:.2f}")
+    else:
+        st.success("No balance pending")
+
+    # -------- Detailed Table --------
+    st.subheader("📄 Detailed Entries")
+    st.dataframe(
+        df[[
+            "transaction_date",
+            "cylinders_delivered",
+            "empty_cylinders_received",
+            "payment_cash",
+            "payment_upi",
+            "balance_after_transaction"
+        ]],
+        use_container_width=True
+    )
+
+    # -------- WhatsApp Message --------
+    whatsapp_msg = f"""
 Gas Cylinder Delivery Report
 
 Shop: {shop_name}
-Period: {f} to {t}
+Period: {from_date.strftime('%d-%m-%Y')} to {to_date.strftime('%d-%m-%Y')}
 
-Delivered: {total_del}
+Cylinders Delivered: {total_delivered}
+Empty Received: {total_empty_received}
 Empty Pending: {empty_pending}
 
-Paid:
-Cash: Rs.{total_cash:.2f}
-UPI: Rs.{total_upi:.2f}
-Total: Rs.{total_paid:.2f}
+Total Amount: Rs. {total_amount:.2f}
 
-Balance Due: Rs.{balance:.2f}
+Paid:
+Cash: Rs. {total_cash:.2f}
+UPI: Rs. {total_upi:.2f}
+Total Paid: Rs. {total_paid:.2f}
+
+Balance Due: Rs. {balance_due:.2f}
+
+Thank you.
 """.strip()
 
-        st.text_area("WhatsApp Message", msg, height=240)
-        open_whatsapp_and_copy(msg, shop["mobile_number"])
+    st.subheader("📱 Send to WhatsApp")
+    st.text_area("Message", whatsapp_msg, height=260)
 
-        pdf = generate_invoice_pdf(
-            f"{shop_name} Delivery Report",
-            msg.split("\n")
-        )
-        st.download_button("Download PDF", pdf, "delivery_report.pdf")
-    else:
-        st.warning("No records")
+    open_whatsapp_and_copy(whatsapp_msg, shop["mobile_number"])
+
+    # -------- PDF DOWNLOAD --------
+    pdf_lines = [
+        f"Shop: {shop_name}",
+        f"Period: {from_date} to {to_date}",
+        "",
+        f"Cylinders Delivered: {total_delivered}",
+        f"Empty Received: {total_empty_received}",
+        f"Empty Pending: {empty_pending}",
+        "",
+        f"Total Amount: Rs. {total_amount:.2f}",
+        f"Cash Paid: Rs. {total_cash:.2f}",
+        f"UPI Paid: Rs. {total_upi:.2f}",
+        f"Total Paid: Rs. {total_paid:.2f}",
+        "",
+        f"Balance Due: Rs. {balance_due:.2f}"
+    ]
+
+    pdf = generate_invoice_pdf(
+        f"{shop_name} – Delivery Report",
+        pdf_lines
+    )
+
+    st.download_button(
+        "📄 Download PDF",
+        pdf,
+        f"{shop_name}_delivery_report.pdf",
+        use_container_width=True
+    )
 
 # =========================================================
 # 📊 PURCHASE REPORT
@@ -406,4 +505,5 @@ elif menu == "🏪 Manage Shops":
         st.rerun()
 
     st.dataframe(pd.DataFrame(shops), use_container_width=True)
+
 
