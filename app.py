@@ -495,7 +495,19 @@ elif menu == "📊 Expense Report":
 elif menu == "✏️ Edit / Delete Entry":
     st.header("✏️ Edit / Delete Entry")
 
-    shop = shop_map[st.selectbox("Shop", shop_map.keys(), key="edit_shop")]
+    def search_shops(query):
+        return [name for name in shop_names if query.lower() in name.lower()]
+
+    shop_name = st_searchbox(
+        search_function=search_shops,
+        placeholder="Type or select shop name",
+        label="Select Shop",
+        key="edit_shop_searchbox"
+    )
+    if not shop_name:
+        st.warning("Please select a shop to proceed.")
+        st.stop()
+    shop = shop_map[shop_name]
     txns = supabase.table("daily_transactions").select("*").eq("shop_id", shop["shop_id"]).order("transaction_date").execute().data
 
     if not txns:
@@ -583,27 +595,38 @@ elif menu == "🏪 Manage Shops":
     st.subheader("Edit/Delete Shops")
     if shops:
         shop_names_list = [f"{s['shop_name']} ({s['mobile_number']})" for s in shops]
-        selected_idx = st.selectbox("Select Shop to Edit/Delete", range(len(shop_names_list)), format_func=lambda i: shop_names_list[i])
-        shop = shops[selected_idx]
-        edit_name = st.text_input("Edit Name", shop['shop_name'], key=f"edit_name_{shop['shop_id']}")
-        edit_mobile = st.text_input("Edit Mobile", shop['mobile_number'], key=f"edit_mobile_{shop['shop_id']}")
-        edit_address = st.text_area("Edit Address", shop['address'], key=f"edit_address_{shop['shop_id']}")
+        def search_shop_objs(query):
+            return [f"{s['shop_name']} ({s['mobile_number']})" for s in shops if query.lower() in s['shop_name'].lower() or query.lower() in s['mobile_number']]
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Save Changes", key=f"save_{shop['shop_id']}"):
-                supabase.table("shops").update({
-                    "shop_name": edit_name,
-                    "mobile_number": edit_mobile,
-                    "address": edit_address
-                }).eq("shop_id", shop["shop_id"]).execute()
-                st.success("Shop updated")
-                st.rerun()
-        with col2:
-            if st.button("Delete Shop", key=f"delete_{shop['shop_id']}"):
-                supabase.table("shops").delete().eq("shop_id", shop["shop_id"]).execute()
-                st.warning("Shop deleted")
-                st.rerun()
+        selected_shop_display = st_searchbox(
+            search_function=search_shop_objs,
+            placeholder="Type or select shop",
+            label="Select Shop to Edit/Delete",
+            key="manage_shop_searchbox"
+        )
+        if not selected_shop_display:
+            st.info("Please select a shop to edit or delete.")
+        else:
+            shop = next(s for s in shops if f"{s['shop_name']} ({s['mobile_number']})" == selected_shop_display)
+            edit_name = st.text_input("Edit Name", shop['shop_name'], key=f"edit_name_{shop['shop_id']}")
+            edit_mobile = st.text_input("Edit Mobile", shop['mobile_number'], key=f"edit_mobile_{shop['shop_id']}")
+            edit_address = st.text_area("Edit Address", shop['address'], key=f"edit_address_{shop['shop_id']}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save Changes", key=f"save_{shop['shop_id']}"):
+                    supabase.table("shops").update({
+                        "shop_name": edit_name,
+                        "mobile_number": edit_mobile,
+                        "address": edit_address
+                    }).eq("shop_id", shop["shop_id"]).execute()
+                    st.success("Shop updated")
+                    st.rerun()
+            with col2:
+                if st.button("Delete Shop", key=f"delete_{shop['shop_id']}"):
+                    supabase.table("shops").delete().eq("shop_id", shop["shop_id"]).execute()
+                    st.warning("Shop deleted")
+                    st.rerun()
     else:
         st.info("No shops available.")
 
