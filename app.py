@@ -193,12 +193,17 @@ if menu == "🚚 Deliver Cylinders":
     today_amt = delivered * price
     total_paid = cash + upi
     new_balance = prev_balance + today_amt - total_paid
-    empty_pending = (prev_del + delivered) - (prev_empty + empty_today)
+
+    # UI logic for empty_pending display
+    if delivered == 0:
+        empty_pending_ui = (prev_del) - (prev_empty + empty_today)
+    else:
+        empty_pending_ui = (prev_del + delivered) - (prev_empty + empty_today)
 
     st.subheader("📌 Summary")
     st.info(f"Today Amount: Rs. {today_amt:.2f}")
     st.success(f"Paid → Cash Rs.{cash:.2f} | UPI Rs.{upi:.2f} | Total Rs.{total_paid:.2f}")
-    st.warning(f"Empty Yet to be Received: {empty_pending}")
+    st.warning(f"Empty Yet to be Received: {empty_pending_ui}")
     st.info(f"Previous Balance: Rs. {prev_balance:.2f}")
     st.error(f"Balance After Entry: Rs. {new_balance:.2f}")
 
@@ -393,6 +398,7 @@ Thank you.
     st.text_area("Message", whatsapp_msg, height=260)
 
     whatsapp_send(whatsapp_msg, shop["mobile_number"])
+
     # -------- PDF DOWNLOAD --------
     pdf_lines = [
         f"Shop: {shop_name}",
@@ -601,5 +607,4 @@ elif menu == "🏪 Manage Shops":
                     st.rerun()
 
     st.dataframe(pd.DataFrame(shops), use_container_width=True)
-
 
