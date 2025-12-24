@@ -85,8 +85,10 @@ def daily_report_pdf(df, report_date):
 
     y = 760
     c.setFont("Helvetica-Bold", 9)
-    headers = ["Shop", "Del", "Empty Rec", "Empty Pend", "Cash", "UPI", "Total", "Balance"]
-    x_positions = [50, 200, 245, 310, 380, 430, 480, 540]
+    headers = [
+        "Shop", "Delivered", "Cylinder Rate", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Pending Balance"
+    ]
+    x_positions = [50, 120, 180, 250, 330, 410, 490, 550, 610]
 
     for h, x in zip(headers, x_positions):
         c.drawString(x, y, h)
@@ -95,14 +97,16 @@ def daily_report_pdf(df, report_date):
     c.setFont("Helvetica", 9)
 
     for _, r in df.iterrows():
+        empty_yet_to_receive = r["Delivered"] - (r["Empty Received"])
         values = [
             r["Shop"][:20],
             str(r["Delivered"]),
+            f"Rs.{r['Price']:.0f}",
+            f"Rs.{r['Total Amount']:.0f}",
             str(r["Empty Received"]),
-            str(r["Empty Pending"]),
+            str(empty_yet_to_receive),
             f"Rs.{r['Cash']:.0f}",
             f"Rs.{r['UPI']:.0f}",
-            f"Rs.{r['Total Paid']:.0f}",
             f"Rs.{r['Balance']:.0f}"
         ]
         for v, x in zip(values, x_positions):
@@ -120,10 +124,13 @@ def daily_report_pdf(df, report_date):
     y = 720
     totals = {
         "Total Delivered": df["Delivered"].sum(),
-        "Total Empty Pending": df["Empty Pending"].sum(),
+        "Total Empty Received": df["Empty Received"].sum(),
+        "Total Empty Yet to be Received": (df["Delivered"].sum() - df["Empty Received"].sum()),
         "Total Cash": df["Cash"].sum(),
         "Total UPI": df["UPI"].sum(),
-        "Total Collected": df["Total Paid"].sum()
+        "Total Collected": df["Total Paid"].sum(),
+        "Total Pending Balance": df["Balance"].sum(),
+        "Total Amount": df["Total Amount"].sum()
     }
 
     c.setFont("Helvetica", 11)
@@ -294,13 +301,29 @@ elif menu == "📆 Daily Report":
     if data:
         df = pd.DataFrame(data)
         df["Shop"] = df["shops"].apply(lambda x: x["shop_name"])
-        df["Total Paid"] = df["payment_cash"] + df["payment_upi"]
-        df["Empty Pending"] = df["cylinders_delivered"] - df["empty_cylinders_received"]
+        df["Delivered"] = df["cylinders_delivered"]
+        df["Price"] = df["price_per_cylinder"]
+        df["Total Amount"] = df["Delivered"] * df["Price"]
+        df["Empty Received"] = df["empty_cylinders_received"]
+        df["Empty Yet to be Received"] = df["Delivered"] - df["Empty Received"]
+        df["Cash"] = df["payment_cash"]
+        df["UPI"] = df["payment_upi"]
+        df["Total Paid"] = df["Cash"] + df["UPI"]
+        df["Balance"] = df["balance_after_transaction"]
 
-        show = df[["Shop","cylinders_delivered","empty_cylinders_received","Empty Pending","payment_cash","payment_upi","Total Paid","balance_after_transaction"]]
-        show.columns = ["Shop","Delivered","Empty Received","Empty Pending","Cash","UPI","Total Paid","Balance"]
+        show = df[["Shop","Delivered","Price","Total Amount","Empty Received","Empty Yet to be Received","Cash","UPI","Total Paid","Balance"]]
 
         st.dataframe(show, use_container_width=True)
+
+        st.subheader("📌 Summary")
+        st.metric("Total Delivered", int(df["Delivered"].sum()))
+        st.metric("Total Empty Received", int(df["Empty Received"].sum()))
+        st.metric("Total Empty Yet to be Received", int(df["Empty Yet to be Received"].sum()))
+        st.metric("Total Amount", f"Rs. {df['Total Amount'].sum():.2f}")
+        st.metric("Total Paid (Cash)", f"Rs. {df['Cash'].sum():.2f}")
+        st.metric("Total Paid (UPI)", f"Rs. {df['UPI'].sum():.2f}")
+        st.metric("Total Paid", f"Rs. {df['Total Paid'].sum():.2f}")
+        st.metric("Total Pending Balance", f"Rs. {df['Balance'].sum():.2f}")
 
         pdf = daily_report_pdf(show, d)
         st.download_button("📄 Download PDF", pdf, "daily_report.pdf")
@@ -350,47 +373,31 @@ elif menu == "📊 Delivery Report":
 
     df = pd.DataFrame(data)
 
-    # -------- Calculations --------
-    total_delivered = int(df["cylinders_delivered"].sum())
-    total_empty_received = int(df["empty_cylinders_received"].sum())
-    empty_pending = total_delivered - total_empty_received
+    # -------- Calculations & Table --------
+    df["Delivered"] = df["cylinders_delivered"]
+    df["Price"] = df["price_per_cylinder"]
+    df["Total Amount"] = df["Delivered"] * df["Price"]
+    df["Empty Received"] = df["empty_cylinders_received"]
+    df["Empty Yet to be Received"] = df["Delivered"] - df["Empty Received"]
+    df["Cash"] = df["payment_cash"]
+    df["UPI"] = df["payment_upi"]
+    df["Total Paid"] = df["Cash"] + df["UPI"]
+    df["Balance"] = df["balance_after_transaction"]
 
-    total_cash = df["payment_cash"].sum()
-    total_upi = df["payment_upi"].sum()
-    total_paid = total_cash + total_upi
-
-    total_amount = df["total_amount"].sum()
-    balance_due = df.iloc[-1]["balance_after_transaction"]
-
-    # -------- UI SUMMARY --------
     st.subheader("📌 Report Summary")
-
-    st.metric("Cylinders Delivered", total_delivered)
-    st.metric("Empty Received", total_empty_received)
-    st.metric("Empty Pending", empty_pending)
-
-    st.metric("Cash Paid", f"Rs. {total_cash:.2f}")
-    st.metric("UPI Paid", f"Rs. {total_upi:.2f}")
-    st.metric("Total Paid", f"Rs. {total_paid:.2f}")
-
-    if balance_due > 0:
-        st.error(f"Balance Due: Rs. {balance_due:.2f}")
-    else:
-        st.success("No balance pending")
+    st.metric("Cylinders Delivered", int(df["Delivered"].sum()))
+    st.metric("Empty Received", int(df["Empty Received"].sum()))
+    st.metric("Empty Yet to be Received", int(df["Empty Yet to be Received"].sum()))
+    st.metric("Total Amount", f"Rs. {df['Total Amount'].sum():.2f}")
+    st.metric("Cash Paid", f"Rs. {df['Cash'].sum():.2f}")
+    st.metric("UPI Paid", f"Rs. {df['UPI'].sum():.2f}")
+    st.metric("Total Paid", f"Rs. {df['Total Paid'].sum():.2f}")
+    st.metric("Pending Balance", f"Rs. {df['Balance'].sum():.2f}")
 
     # -------- Detailed Table --------
     st.subheader("📄 Detailed Entries")
-    st.dataframe(
-        df[[
-            "transaction_date",
-            "cylinders_delivered",
-            "empty_cylinders_received",
-            "payment_cash",
-            "payment_upi",
-            "balance_after_transaction"
-        ]],
-        use_container_width=True
-    )
+    show = df[["transaction_date","Delivered","Price","Total Amount","Empty Received","Empty Yet to be Received","Cash","UPI","Total Paid","Balance"]]
+    st.dataframe(show, use_container_width=True)
 
     # -------- WhatsApp Message --------
     whatsapp_msg = f"""
@@ -399,18 +406,18 @@ Gas Cylinder Delivery Report
 Shop: {shop_name}
 Period: {from_date.strftime('%d-%m-%Y')} to {to_date.strftime('%d-%m-%Y')}
 
-Cylinders Delivered: {total_delivered}
-Empty Received: {total_empty_received}
-Empty Pending: {empty_pending}
-
-Total Amount: Rs. {total_amount:.2f}
+Cylinders Delivered: {int(df['Delivered'].sum())}
+Cylinder Rate: Rs. {df['Price'].iloc[-1]:.2f}
+Total Amount: Rs. {df['Total Amount'].sum():.2f}
+Empty Received: {int(df['Empty Received'].sum())}
+Empty Yet to be Received: {int(df['Empty Yet to be Received'].sum())}
 
 Paid:
-Cash: Rs. {total_cash:.2f}
-UPI: Rs. {total_upi:.2f}
-Total Paid: Rs. {total_paid:.2f}
+Cash: Rs. {df['Cash'].sum():.2f}
+UPI: Rs. {df['UPI'].sum():.2f}
+Total Paid: Rs. {df['Total Paid'].sum():.2f}
 
-Balance Due: Rs. {balance_due:.2f}
+Pending Balance: Rs. {df['Balance'].sum():.2f}
 
 Thank you.
 """.strip()
@@ -421,27 +428,7 @@ Thank you.
     whatsapp_send(whatsapp_msg, shop["mobile_number"])
 
     # -------- PDF DOWNLOAD --------
-    pdf_lines = [
-        f"Shop: {shop_name}",
-        f"Period: {from_date} to {to_date}",
-        "",
-        f"Cylinders Delivered: {total_delivered}",
-        f"Empty Received: {total_empty_received}",
-        f"Empty Pending: {empty_pending}",
-        "",
-        f"Total Amount: Rs. {total_amount:.2f}",
-        f"Cash Paid: Rs. {total_cash:.2f}",
-        f"UPI Paid: Rs. {total_upi:.2f}",
-        f"Total Paid: Rs. {total_paid:.2f}",
-        "",
-        f"Balance Due: Rs. {balance_due:.2f}"
-    ]
-
-    pdf = generate_invoice_pdf(
-        f"{shop_name} – Delivery Report",
-        pdf_lines
-    )
-
+    pdf = daily_report_pdf(show, f"{shop_name} Delivery Report {from_date} to {to_date}")
     st.download_button(
         "📄 Download PDF",
         pdf,
