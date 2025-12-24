@@ -235,11 +235,17 @@ elif menu == "🛒 Purchase Cylinders":
 
     p_data = supabase.table("cylinder_purchases").select("*").execute().data
     total_outstanding = sum(p["outstanding_amount"] for p in p_data) if p_data else 0
+    total_purchased = sum(p["cylinders_purchased"] for p in p_data) if p_data else 0
+    total_empty_returned = sum(p["empty_cylinders_returned"] for p in p_data) if p_data else 0
+    empty_yet_to_receive = total_purchased - total_empty_returned
 
     today_total = purchased * price
     today_outstanding = today_total - (cash + upi)
 
     st.subheader("📌 Summary")
+    st.metric("Total Cylinders Purchased", total_purchased)
+    st.metric("Total Empty Returned", total_empty_returned)
+    st.metric("Empty Yet to Receive", empty_yet_to_receive)
     st.info(f"Today Amount: Rs. {today_total:.2f}")
     st.warning(f"Total Outstanding (Till Now): Rs. {total_outstanding + today_outstanding:.2f}")
 
