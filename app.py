@@ -77,23 +77,25 @@ def generate_invoice_pdf(title, lines):
 
 
 def daily_report_pdf(df, report_date):
+    from reportlab.lib.pagesizes import landscape, A4
     buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
+    c = canvas.Canvas(buf, pagesize=landscape(A4))
 
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, 800, f"Daily Delivery Report - {report_date}")
+    c.drawString(50, 570, f"Daily Delivery Report - {report_date}")
 
-    y = 760
-    c.setFont("Helvetica-Bold", 9)
+    # Table formatting
     headers = [
         "Shop", "Delivered", "Cylinder Rate", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Pending Balance"
     ]
-    x_positions = [50, 120, 180, 250, 330, 410, 490, 550, 610]
+    col_widths = [110, 70, 90, 100, 90, 110, 80, 80, 110]
+    x_positions = [50]
+    for w in col_widths[:-1]:
+        x_positions.append(x_positions[-1] + w)
 
     # Ensure columns match expected names
     expected_cols = ["Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Balance"]
     if list(df.columns) != expected_cols:
-        # Try to rename columns if possible
         rename_map = {}
         for col in df.columns:
             if col.lower().replace(" ", "") == "shop":
@@ -116,37 +118,40 @@ def daily_report_pdf(df, report_date):
                 rename_map[col] = "Balance"
         df = df.rename(columns=rename_map)
 
+    # Draw headers
+    y = 530
+    c.setFont("Helvetica-Bold", 10)
     for h, x in zip(headers, x_positions):
         c.drawString(x, y, h)
 
-    y -= 15
+    y -= 18
     c.setFont("Helvetica", 9)
 
-    # Render the exact DataFrame table as in detailed entries, with text wrapping
-    col_widths = [70, 60, 60, 70, 70, 70, 60, 60, 70]  # Approximate widths for wrapping
+    # Draw rows
+    row_height = 16
     for idx, row in df.iterrows():
         for i, (col, x, w) in enumerate(zip(df.columns, x_positions, col_widths)):
             val = str(row[col])
             # Wrap text if too long
-            while val:
-                c.drawString(x, y, val[:int(w/6)])
-                val = val[int(w/6):]
-                y -= 12
-                if y < 80:
+            max_chars = int(w / 7)
+            lines = [val[j:j+max_chars] for j in range(0, len(val), max_chars)]
+            for line in lines:
+                c.drawString(x, y, line)
+                y -= row_height // len(lines)
+                if y < 60:
                     c.showPage()
-                    y = 760
-        # After printing all columns for this row, move to next line
-        y -= 3
-        if y < 80:
+                    y = 530
+        y -= 2
+        if y < 60:
             c.showPage()
-            y = 760
+            y = 530
 
     # Grand totals
     c.showPage()
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, 760, "Grand Total")
+    c.drawString(50, 570, "Grand Total")
 
-    y = 720
+    y = 530
     totals = {
         "Total Delivered": df["Delivered"].sum(),
         "Total Empty Received": df["Empty Received"].sum(),
