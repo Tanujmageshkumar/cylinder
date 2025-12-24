@@ -16,19 +16,6 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.set_page_config(page_title="Gas Cylinder Manager", layout="centered")
 
 # ================= AUTH =================
-if "auth" not in st.session_state:
-    st.session_state.auth = False
-
-if not st.session_state.auth:
-    st.title("🔐 Owner Login")
-    pwd = st.text_input("Password", type="password")
-    if st.button("Login", use_container_width=True):
-        if pwd == OWNER_PASSWORD:
-            st.session_state.auth = True
-            st.rerun()
-        else:
-            st.error("Wrong password")
-    st.stop()
 
 # ================= HELPERS =================
 def get_shops():
