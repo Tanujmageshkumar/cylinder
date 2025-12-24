@@ -90,6 +90,32 @@ def daily_report_pdf(df, report_date):
     ]
     x_positions = [50, 120, 180, 250, 330, 410, 490, 550, 610]
 
+    # Ensure columns match expected names
+    expected_cols = ["Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Balance"]
+    if list(df.columns) != expected_cols:
+        # Try to rename columns if possible
+        rename_map = {}
+        for col in df.columns:
+            if col.lower().replace(" ", "") == "shop":
+                rename_map[col] = "Shop"
+            elif col.lower().replace(" ", "") == "delivered":
+                rename_map[col] = "Delivered"
+            elif col.lower().replace(" ", "") in ["price", "cylinderrate"]:
+                rename_map[col] = "Price"
+            elif col.lower().replace(" ", "") == "totalamount":
+                rename_map[col] = "Total Amount"
+            elif col.lower().replace(" ", "") == "emptyreceived":
+                rename_map[col] = "Empty Received"
+            elif col.lower().replace(" ", "") in ["emptyyettobereceived", "emptyyet"]:
+                rename_map[col] = "Empty Yet to be Received"
+            elif col.lower().replace(" ", "") == "cash":
+                rename_map[col] = "Cash"
+            elif col.lower().replace(" ", "") == "upi":
+                rename_map[col] = "UPI"
+            elif col.lower().replace(" ", "") in ["balance", "pendingbalance"]:
+                rename_map[col] = "Balance"
+        df = df.rename(columns=rename_map)
+
     for h, x in zip(headers, x_positions):
         c.drawString(x, y, h)
 
@@ -99,15 +125,15 @@ def daily_report_pdf(df, report_date):
     for _, r in df.iterrows():
         empty_yet_to_receive = r["Delivered"] - (r["Empty Received"])
         values = [
-            r["Shop"][:20],
-            str(r["Delivered"]),
-            f"Rs.{r['Price']:.0f}",
-            f"Rs.{r['Total Amount']:.0f}",
-            str(r["Empty Received"]),
-            str(empty_yet_to_receive),
-            f"Rs.{r['Cash']:.0f}",
-            f"Rs.{r['UPI']:.0f}",
-            f"Rs.{r['Balance']:.0f}"
+            str(r.get("Shop", "")[:20]),
+            str(r.get("Delivered", "")),
+            f"Rs.{r.get('Price', 0):.0f}",
+            f"Rs.{r.get('Total Amount', 0):.0f}",
+            str(r.get("Empty Received", "")),
+            str(r.get("Empty Yet to be Received", empty_yet_to_receive)),
+            f"Rs.{r.get('Cash', 0):.0f}",
+            f"Rs.{r.get('UPI', 0):.0f}",
+            f"Rs.{r.get('Balance', 0):.0f}"
         ]
         for v, x in zip(values, x_positions):
             c.drawString(x, y, v)
