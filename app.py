@@ -136,6 +136,30 @@ def daily_report_pdf(df, report_date):
     return buf
 
 # ================= SIDEBAR =================
+
+# Inject custom CSS for sidebar menu font size and spacing
+st.markdown(
+    """
+    <style>
+    /* Sidebar radio font size and spacing */
+    [data-testid="stSidebar"] .stRadio > div {
+        font-size: 1.35rem !important;
+        line-height: 2.2rem !important;
+        margin-bottom: 1.2rem !important;
+    }
+    [data-testid="stSidebar"] .stRadio label {
+        font-size: 1.35rem !important;
+        line-height: 2.2rem !important;
+        padding: 0.7rem 0.2rem !important;
+    }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+        gap: 0.7rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 menu = st.sidebar.radio(
     "📌 Menu",
     [
