@@ -186,9 +186,23 @@ if menu == "🚚 Deliver Cylinders":
 
     delivered = st.number_input("Cylinders Delivered Today", 0)
     empty_today = st.number_input("Empty Received Today", 0)
-    price = st.number_input("Price per Cylinder", 0.0)
-    cash = st.number_input("Cash Paid", 0.0)
-    upi = st.number_input("UPI Paid", 0.0)
+    price_str = st.text_input("Price per Cylinder", "")
+    cash_str = st.text_input("Cash Paid", "")
+    upi_str = st.text_input("UPI Paid", "")
+
+    # Convert to float, default to 0 if empty or invalid
+    try:
+        price = float(price_str) if price_str.strip() else 0.0
+    except ValueError:
+        price = 0.0
+    try:
+        cash = float(cash_str) if cash_str.strip() else 0.0
+    except ValueError:
+        cash = 0.0
+    try:
+        upi = float(upi_str) if upi_str.strip() else 0.0
+    except ValueError:
+        upi = 0.0
 
     today_amt = delivered * price
     total_paid = cash + upi
@@ -229,9 +243,23 @@ elif menu == "🛒 Purchase Cylinders":
 
     purchased = st.number_input("Cylinders Purchased", 0)
     empty_returned = st.number_input("Empty Returned", 0)
-    price = st.number_input("Price per Cylinder", 0.0)
-    cash = st.number_input("Cash Paid", 0.0)
-    upi = st.number_input("UPI Paid", 0.0)
+    price_str = st.text_input("Price per Cylinder", "")
+    cash_str = st.text_input("Cash Paid", "")
+    upi_str = st.text_input("UPI Paid", "")
+
+    # Convert to float, default to 0 if empty or invalid
+    try:
+        price = float(price_str) if price_str.strip() else 0.0
+    except ValueError:
+        price = 0.0
+    try:
+        cash = float(cash_str) if cash_str.strip() else 0.0
+    except ValueError:
+        cash = 0.0
+    try:
+        upi = float(upi_str) if upi_str.strip() else 0.0
+    except ValueError:
+        upi = 0.0
 
     p_data = supabase.table("cylinder_purchases").select("*").execute().data
     total_outstanding = sum(p["outstanding_amount"] for p in p_data) if p_data else 0
