@@ -160,13 +160,7 @@ shop_names = list(shop_map.keys())
 if menu == "🚚 Deliver Cylinders":
     st.header("🚚 Deliver Cylinders")
 
-    typed = st.text_input("🔍 Type Shop Name")
-    sorted_shops = sorted(
-        shop_names,
-        key=lambda x: (typed.lower() not in x.lower(), x)
-    )
-
-    shop_name = st.selectbox("Select Shop", sorted_shops)
+    shop_name = st.selectbox("Select Shop", shop_names)
     shop = shop_map[shop_name]
 
     prev_del, prev_empty, prev_balance = get_shop_cumulative(shop["shop_id"])
@@ -288,20 +282,7 @@ elif menu == "📆 Daily Report":
 elif menu == "📊 Delivery Report":
     st.header("📊 Delivery Report")
 
-    # -------- Mobile-friendly shop search --------
-    typed = st.text_input("🔍 Type Shop Name", key="del_rep_search")
-
-    sorted_shops = sorted(
-        shop_names,
-        key=lambda x: (typed.lower() not in x.lower(), x)
-    )
-
-    shop_name = st.selectbox(
-        "🏪 Select Shop",
-        sorted_shops,
-        key="del_rep_shop"
-    )
-
+    shop_name = st.selectbox("🏪 Select Shop", shop_names, key="del_rep_shop")
     shop = shop_map[shop_name]
 
     from_date = st.date_input("From Date", key="del_rep_from")
