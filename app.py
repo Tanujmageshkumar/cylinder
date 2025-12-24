@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client
+from streamlit_searchbox import st_searchbox
 import pandas as pd
 from datetime import date
 from io import BytesIO
@@ -160,10 +161,16 @@ shop_names = list(shop_map.keys())
 if menu == "🚚 Deliver Cylinders":
     st.header("🚚 Deliver Cylinders")
 
-    shop_search = st.text_input("Search Shop Name (type to filter)", "")
-    filtered_shops = [name for name in shop_names if shop_search.lower() in name.lower()] if shop_search else shop_names
-    shop_name = st.selectbox("Select Shop", ["-- Select Shop --"] + filtered_shops, index=0)
-    if shop_name == "-- Select Shop --":
+    def search_shops(query):
+        return [name for name in shop_names if query.lower() in name.lower()]
+
+    shop_name = st_searchbox(
+        search_function=search_shops,
+        placeholder="Type or select shop name",
+        label="Select Shop",
+        key="deliver_shop_searchbox"
+    )
+    if not shop_name:
         st.warning("Please select a shop to proceed.")
         st.stop()
     shop = shop_map[shop_name]
