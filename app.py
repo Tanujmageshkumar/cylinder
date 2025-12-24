@@ -122,22 +122,21 @@ def daily_report_pdf(df, report_date):
     y -= 15
     c.setFont("Helvetica", 9)
 
-    for _, r in df.iterrows():
-        empty_yet_to_receive = r["Delivered"] - (r["Empty Received"])
-        values = [
-            str(r.get("Shop", "")[:20]),
-            str(r.get("Delivered", "")),
-            f"Rs.{r.get('Price', 0):.0f}",
-            f"Rs.{r.get('Total Amount', 0):.0f}",
-            str(r.get("Empty Received", "")),
-            str(r.get("Empty Yet to be Received", empty_yet_to_receive)),
-            f"Rs.{r.get('Cash', 0):.0f}",
-            f"Rs.{r.get('UPI', 0):.0f}",
-            f"Rs.{r.get('Balance', 0):.0f}"
-        ]
-        for v, x in zip(values, x_positions):
-            c.drawString(x, y, v)
-        y -= 15
+    # Render the exact DataFrame table as in detailed entries, with text wrapping
+    col_widths = [70, 60, 60, 70, 70, 70, 60, 60, 70]  # Approximate widths for wrapping
+    for idx, row in df.iterrows():
+        for i, (col, x, w) in enumerate(zip(df.columns, x_positions, col_widths)):
+            val = str(row[col])
+            # Wrap text if too long
+            while val:
+                c.drawString(x, y, val[:int(w/6)])
+                val = val[int(w/6):]
+                y -= 12
+                if y < 80:
+                    c.showPage()
+                    y = 760
+        # After printing all columns for this row, move to next line
+        y -= 3
         if y < 80:
             c.showPage()
             y = 760
