@@ -158,6 +158,7 @@ menu = st.sidebar.radio(
         "📊 Delivery Report",
         "📊 Purchase Report",
         "📊 Expense Report",
+        "✏️ Edit / Delete Entry",
         "🏪 Manage Shops"
     ]
 )
@@ -485,12 +486,85 @@ elif menu == "📊 Expense Report":
     else:
         st.warning("No data")
 
+
 # =========================================================
-# 🏪 MANAGE SHOPS
+# ✏️ EDIT / DELETE ENTRY
+# =========================================================
+elif menu == "✏️ Edit / Delete Entry":
+    st.header("✏️ Edit / Delete Entry")
+
+    shop = shop_map[st.selectbox("Shop", shop_map.keys(), key="edit_shop")]
+    txns = supabase.table("daily_transactions").select("*").eq("shop_id", shop["shop_id"]).order("transaction_date").execute().data
+
+    if not txns:
+        st.info("No entries")
+    else:
+        df = pd.DataFrame(txns)
+        df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.date
+        st.dataframe(df, use_container_width=True)
+
+        selected_date = st.selectbox(
+            "Select Date",
+            sorted(df["transaction_date"].unique()),
+            key="edit_date"
+        )
+
+        row = df[df["transaction_date"] == selected_date].iloc[0]
+
+        with st.form("edit_form"):
+            delivered = st.number_input("Delivered", int(row["cylinders_delivered"]), key="edit_delivered")
+            empty = st.number_input("Empty Received", int(row["empty_cylinders_received"]), key="edit_empty")
+            price = st.number_input("Price", float(row["price_per_cylinder"]), key="edit_price")
+            cash = st.number_input("Cash", float(row["payment_cash"]), key="edit_cash")
+            upi = st.number_input("UPI", float(row["payment_upi"]), key="edit_upi")
+
+            col1, col2 = st.columns(2)
+            if col1.form_submit_button("Update"):
+                supabase.table("daily_transactions").update({
+                    "cylinders_delivered": delivered,
+                    "empty_cylinders_received": empty,
+                    "price_per_cylinder": price,
+                    "total_amount": delivered * price,
+                    "payment_cash": cash,
+                    "payment_upi": upi
+                }).eq("transaction_id", row["transaction_id"]).execute()
+                # Recalculate balance for this shop after update
+                # (Assume recalc_balance is not defined, so recalculate manually)
+                txns2 = supabase.table("daily_transactions").select("*").eq("shop_id", shop["shop_id"]).order("transaction_date").execute().data
+                if txns2:
+                    txns2 = sorted(txns2, key=lambda x: x["transaction_date"])
+                    balance = 0
+                    for t in txns2:
+                        t["total_amount"] = t["cylinders_delivered"] * t["price_per_cylinder"]
+                        paid = t["payment_cash"] + t["payment_upi"]
+                        balance = balance + t["total_amount"] - paid
+                        supabase.table("daily_transactions").update({"balance_after_transaction": balance}).eq("transaction_id", t["transaction_id"]).execute()
+                st.success("Updated")
+                st.rerun()
+
+            if col2.form_submit_button("Delete"):
+                supabase.table("daily_transactions").delete().eq("transaction_id", row["transaction_id"]).execute()
+                # Recalculate balance for this shop after delete
+                txns2 = supabase.table("daily_transactions").select("*").eq("shop_id", shop["shop_id"]).order("transaction_date").execute().data
+                if txns2:
+                    txns2 = sorted(txns2, key=lambda x: x["transaction_date"])
+                    balance = 0
+                    for t in txns2:
+                        t["total_amount"] = t["cylinders_delivered"] * t["price_per_cylinder"]
+                        paid = t["payment_cash"] + t["payment_upi"]
+                        balance = balance + t["total_amount"] - paid
+                        supabase.table("daily_transactions").update({"balance_after_transaction": balance}).eq("transaction_id", t["transaction_id"]).execute()
+                st.success("Deleted")
+                st.rerun()
+
+
+# =========================================================
+# 🏪 MANAGE SHOPS (EDIT/DELETE)
 # =========================================================
 elif menu == "🏪 Manage Shops":
     st.header("🏪 Manage Shops")
 
+    # Add new shop
     name = st.text_input("Shop Name")
     mobile = st.text_input("Mobile Number")
     address = st.text_area("Address")
@@ -504,6 +578,28 @@ elif menu == "🏪 Manage Shops":
         st.success("Shop added")
         st.rerun()
 
-    st.dataframe(pd.DataFrame(shops), use_container_width=True)
+    st.subheader("Edit/Delete Shops")
+    for shop in shops:
+        with st.expander(f"{shop['shop_name']} ({shop['mobile_number']})", expanded=False):
+            edit_name = st.text_input(f"Edit Name_{shop['shop_id']}", shop['shop_name'], key=f"edit_name_{shop['shop_id']}")
+            edit_mobile = st.text_input(f"Edit Mobile_{shop['shop_id']}", shop['mobile_number'], key=f"edit_mobile_{shop['shop_id']}")
+            edit_address = st.text_area(f"Edit Address_{shop['shop_id']}", shop['address'], key=f"edit_address_{shop['shop_id']}")
 
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Save Changes", key=f"save_{shop['shop_id']}"):
+                    supabase.table("shops").update({
+                        "shop_name": edit_name,
+                        "mobile_number": edit_mobile,
+                        "address": edit_address
+                    }).eq("shop_id", shop["shop_id"]).execute()
+                    st.success("Shop updated")
+                    st.rerun()
+            with col2:
+                if st.button("Delete Shop", key=f"delete_{shop['shop_id']}"):
+                    supabase.table("shops").delete().eq("shop_id", shop["shop_id"]).execute()
+                    st.warning("Shop deleted")
+                    st.rerun()
+
+    st.dataframe(pd.DataFrame(shops), use_container_width=True)
 
