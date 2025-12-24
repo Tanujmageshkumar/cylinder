@@ -184,25 +184,11 @@ if menu == "🚚 Deliver Cylinders":
 
     prev_del, prev_empty, prev_balance = get_shop_cumulative(shop["shop_id"])
 
-    delivered = st.number_input("Cylinders Delivered Today", 0)
-    empty_today = st.number_input("Empty Received Today", 0)
-    price_str = st.text_input("Price per Cylinder", "")
-    cash_str = st.text_input("Cash Paid", "")
-    upi_str = st.text_input("UPI Paid", "")
-
-    # Convert to float, default to 0 if empty or invalid
-    try:
-        price = float(price_str) if price_str.strip() else 0.0
-    except ValueError:
-        price = 0.0
-    try:
-        cash = float(cash_str) if cash_str.strip() else 0.0
-    except ValueError:
-        cash = 0.0
-    try:
-        upi = float(upi_str) if upi_str.strip() else 0.0
-    except ValueError:
-        upi = 0.0
+    delivered = st.number_input("Cylinders Delivered Today", min_value=0, step=1)
+    empty_today = st.number_input("Empty Received Today", min_value=0, step=1)
+    price = st.number_input("Price per Cylinder", min_value=0.0, format="%.2f")
+    cash = st.number_input("Cash Paid", min_value=0.0, format="%.2f")
+    upi = st.number_input("UPI Paid", min_value=0.0, format="%.2f")
 
     today_amt = delivered * price
     total_paid = cash + upi
