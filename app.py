@@ -294,7 +294,18 @@ elif menu == "📆 Daily Report":
 elif menu == "📊 Delivery Report":
     st.header("📊 Delivery Report")
 
-    shop_name = st.selectbox("🏪 Select Shop", shop_names, key="del_rep_shop")
+    def search_shops(query):
+        return [name for name in shop_names if query.lower() in name.lower()]
+
+    shop_name = st_searchbox(
+        search_function=search_shops,
+        placeholder="Type or select shop name",
+        label="Select Shop",
+        key="del_rep_shop_searchbox"
+    )
+    if not shop_name:
+        st.warning("Please select a shop to proceed.")
+        st.stop()
     shop = shop_map[shop_name]
 
     from_date = st.date_input("From Date", key="del_rep_from")
