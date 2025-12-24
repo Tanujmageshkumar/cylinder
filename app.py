@@ -584,27 +584,31 @@ elif menu == "🏪 Manage Shops":
         st.rerun()
 
     st.subheader("Edit/Delete Shops")
-    for shop in shops:
-        with st.expander(f"{shop['shop_name']} ({shop['mobile_number']})", expanded=False):
-            edit_name = st.text_input(f"Edit Name_{shop['shop_id']}", shop['shop_name'], key=f"edit_name_{shop['shop_id']}")
-            edit_mobile = st.text_input(f"Edit Mobile_{shop['shop_id']}", shop['mobile_number'], key=f"edit_mobile_{shop['shop_id']}")
-            edit_address = st.text_area(f"Edit Address_{shop['shop_id']}", shop['address'], key=f"edit_address_{shop['shop_id']}")
+    if shops:
+        shop_names_list = [f"{s['shop_name']} ({s['mobile_number']})" for s in shops]
+        selected_idx = st.selectbox("Select Shop to Edit/Delete", range(len(shop_names_list)), format_func=lambda i: shop_names_list[i])
+        shop = shops[selected_idx]
+        edit_name = st.text_input("Edit Name", shop['shop_name'], key=f"edit_name_{shop['shop_id']}")
+        edit_mobile = st.text_input("Edit Mobile", shop['mobile_number'], key=f"edit_mobile_{shop['shop_id']}")
+        edit_address = st.text_area("Edit Address", shop['address'], key=f"edit_address_{shop['shop_id']}")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Save Changes", key=f"save_{shop['shop_id']}"):
-                    supabase.table("shops").update({
-                        "shop_name": edit_name,
-                        "mobile_number": edit_mobile,
-                        "address": edit_address
-                    }).eq("shop_id", shop["shop_id"]).execute()
-                    st.success("Shop updated")
-                    st.rerun()
-            with col2:
-                if st.button("Delete Shop", key=f"delete_{shop['shop_id']}"):
-                    supabase.table("shops").delete().eq("shop_id", shop["shop_id"]).execute()
-                    st.warning("Shop deleted")
-                    st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Save Changes", key=f"save_{shop['shop_id']}"):
+                supabase.table("shops").update({
+                    "shop_name": edit_name,
+                    "mobile_number": edit_mobile,
+                    "address": edit_address
+                }).eq("shop_id", shop["shop_id"]).execute()
+                st.success("Shop updated")
+                st.rerun()
+        with col2:
+            if st.button("Delete Shop", key=f"delete_{shop['shop_id']}"):
+                supabase.table("shops").delete().eq("shop_id", shop["shop_id"]).execute()
+                st.warning("Shop deleted")
+                st.rerun()
+    else:
+        st.info("No shops available.")
 
     st.dataframe(pd.DataFrame(shops), use_container_width=True)
 
