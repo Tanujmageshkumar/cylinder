@@ -90,38 +90,41 @@ def daily_report_pdf(df, report_date):
     elements.append(title)
     elements.append(Spacer(1, 12))
 
-    # Ensure columns match expected names
-    expected_cols = ["Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Balance"]
-    if list(df.columns) != expected_cols:
-        rename_map = {}
-        for col in df.columns:
-            if col.lower().replace(" ", "") == "shop":
-                rename_map[col] = "Shop"
-            elif col.lower().replace(" ", "") == "delivered":
-                rename_map[col] = "Delivered"
-            elif col.lower().replace(" ", "") in ["price", "cylinderrate"]:
-                rename_map[col] = "Price"
-            elif col.lower().replace(" ", "") == "totalamount":
-                rename_map[col] = "Total Amount"
-            elif col.lower().replace(" ", "") == "emptyreceived":
-                rename_map[col] = "Empty Received"
-            elif col.lower().replace(" ", "") in ["emptyyettobereceived", "emptyyet"]:
-                rename_map[col] = "Empty Yet to be Received"
-            elif col.lower().replace(" ", "") == "cash":
-                rename_map[col] = "Cash"
-            elif col.lower().replace(" ", "") == "upi":
-                rename_map[col] = "UPI"
-            elif col.lower().replace(" ", "") in ["balance", "pendingbalance"]:
-                rename_map[col] = "Balance"
-        df = df.rename(columns=rename_map)
 
-    # Prepare table data
-    table_data = [df.columns.tolist()]
+    # Add transaction_date if present, and shorten columns for better fit
+    # Try to include: transaction_date, Shop, Delivered, Price, Total Amount, Empty Received, Balance
+    # Remove less critical columns (Empty Yet to be Received, Cash, UPI)
+    # Rename columns for consistency
+    rename_map = {}
+    for col in df.columns:
+        if col.lower().replace(" ", "") == "shop":
+            rename_map[col] = "Shop"
+        elif col.lower().replace(" ", "") == "delivered":
+            rename_map[col] = "Delivered"
+        elif col.lower().replace(" ", "") in ["price", "cylinderrate"]:
+            rename_map[col] = "Price"
+        elif col.lower().replace(" ", "") == "totalamount":
+            rename_map[col] = "Total Amount"
+        elif col.lower().replace(" ", "") == "emptyreceived":
+            rename_map[col] = "Empty Received"
+        elif col.lower().replace(" ", "") in ["balance", "pendingbalance"]:
+            rename_map[col] = "Balance"
+        elif col.lower().replace(" ", "") in ["transactiondate", "date"]:
+            rename_map[col] = "Date"
+    df = df.rename(columns=rename_map)
+
+    # If transaction_date is present, add it to the table
+    if "transaction_date" in df.columns:
+        df["Date"] = df["transaction_date"].astype(str)
+
+    # Columns to show in PDF
+    pdf_cols = [col for col in ["Date", "Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Balance"] if col in df.columns]
+    table_data = [pdf_cols]
     for _, row in df.iterrows():
-        table_data.append([str(row[col]) for col in df.columns])
+        table_data.append([str(row.get(col, "")) for col in pdf_cols])
 
-    # Table style
-    col_widths = [110, 70, 90, 100, 90, 110, 80, 80, 110]
+    # Shorter column widths for better fit
+    col_widths = [70, 90, 55, 55, 70, 60, 70][:len(pdf_cols)]
     table = Table(table_data, colWidths=col_widths)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
@@ -129,28 +132,24 @@ def daily_report_pdf(df, report_date):
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ROWHEIGHT', (0,0), (-1,-1), 18),
+        ('ROWHEIGHT', (0,0), (-1,-1), 15),
     ]))
     elements.append(table)
-    elements.append(Spacer(1, 18))
+    elements.append(Spacer(1, 12))
 
-    # Grand totals
-    totals = {
-        "Total Delivered": df["Delivered"].sum(),
-        "Total Empty Received": df["Empty Received"].sum(),
-        "Total Empty Yet to be Received": (df["Delivered"].sum() - df["Empty Received"].sum()),
-        "Total Cash": df["Cash"].sum(),
-        "Total UPI": df["UPI"].sum(),
-        "Total Collected": df["Total Paid"].sum(),
-        "Total Pending Balance": df["Balance"].sum(),
-        "Total Amount": df["Total Amount"].sum()
-    }
+    # Grand totals (show only for columns present)
     elements.append(Paragraph("<b>Grand Total</b>", styles['Heading2']))
-    for k, v in totals.items():
-        elements.append(Paragraph(f"{k}: {v}", styles['Normal']))
+    if "Delivered" in df.columns:
+        elements.append(Paragraph(f"Total Delivered: {df['Delivered'].sum()}", styles['Normal']))
+    if "Empty Received" in df.columns:
+        elements.append(Paragraph(f"Total Empty Received: {df['Empty Received'].sum()}", styles['Normal']))
+    if "Total Amount" in df.columns:
+        elements.append(Paragraph(f"Total Amount: Rs. {df['Total Amount'].sum():.2f}", styles['Normal']))
+    if "Balance" in df.columns:
+        elements.append(Paragraph(f"Total Pending Balance: Rs. {df['Balance'].sum():.2f}", styles['Normal']))
 
     doc.build(elements)
     buf.seek(0)
