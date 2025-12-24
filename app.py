@@ -78,20 +78,17 @@ def generate_invoice_pdf(title, lines):
 
 def daily_report_pdf(df, report_date):
     from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet
     buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=landscape(A4))
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=30, rightMargin=30, topMargin=30, bottomMargin=30)
+    elements = []
+    styles = getSampleStyleSheet()
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, 570, f"Daily Delivery Report - {report_date}")
-
-    # Table formatting
-    headers = [
-        "Shop", "Delivered", "Cylinder Rate", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Pending Balance"
-    ]
-    col_widths = [110, 70, 90, 100, 90, 110, 80, 80, 110]
-    x_positions = [50]
-    for w in col_widths[:-1]:
-        x_positions.append(x_positions[-1] + w)
+    title = Paragraph(f"<b>Daily Delivery Report - {report_date}</b>", styles['Title'])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
 
     # Ensure columns match expected names
     expected_cols = ["Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Empty Yet to be Received", "Cash", "UPI", "Balance"]
@@ -118,40 +115,29 @@ def daily_report_pdf(df, report_date):
                 rename_map[col] = "Balance"
         df = df.rename(columns=rename_map)
 
-    # Draw headers
-    y = 530
-    c.setFont("Helvetica-Bold", 10)
-    for h, x in zip(headers, x_positions):
-        c.drawString(x, y, h)
+    # Prepare table data
+    table_data = [df.columns.tolist()]
+    for _, row in df.iterrows():
+        table_data.append([str(row[col]) for col in df.columns])
 
-    y -= 18
-    c.setFont("Helvetica", 9)
-
-    # Draw rows
-    row_height = 16
-    for idx, row in df.iterrows():
-        for i, (col, x, w) in enumerate(zip(df.columns, x_positions, col_widths)):
-            val = str(row[col])
-            # Wrap text if too long
-            max_chars = int(w / 7)
-            lines = [val[j:j+max_chars] for j in range(0, len(val), max_chars)]
-            for line in lines:
-                c.drawString(x, y, line)
-                y -= row_height // len(lines)
-                if y < 60:
-                    c.showPage()
-                    y = 530
-        y -= 2
-        if y < 60:
-            c.showPage()
-            y = 530
+    # Table style
+    col_widths = [110, 70, 90, 100, 90, 110, 80, 80, 110]
+    table = Table(table_data, colWidths=col_widths)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ROWHEIGHT', (0,0), (-1,-1), 18),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 18))
 
     # Grand totals
-    c.showPage()
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, 570, "Grand Total")
-
-    y = 530
     totals = {
         "Total Delivered": df["Delivered"].sum(),
         "Total Empty Received": df["Empty Received"].sum(),
@@ -162,13 +148,11 @@ def daily_report_pdf(df, report_date):
         "Total Pending Balance": df["Balance"].sum(),
         "Total Amount": df["Total Amount"].sum()
     }
-
-    c.setFont("Helvetica", 11)
+    elements.append(Paragraph("<b>Grand Total</b>", styles['Heading2']))
     for k, v in totals.items():
-        c.drawString(50, y, f"{k}: {v}")
-        y -= 25
+        elements.append(Paragraph(f"{k}: {v}", styles['Normal']))
 
-    c.save()
+    doc.build(elements)
     buf.seek(0)
     return buf
 
