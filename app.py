@@ -117,14 +117,17 @@ def daily_report_pdf(df, report_date):
     if "transaction_date" in df.columns:
         df["Date"] = df["transaction_date"].astype(str)
 
-    # Columns to show in PDF
-    pdf_cols = [col for col in ["Date", "Shop", "Delivered", "Price", "Total Amount", "Empty Received", "Balance"] if col in df.columns]
+
+    # Show all columns, reduce width for each
+    pdf_cols = list(df.columns)
     table_data = [pdf_cols]
     for _, row in df.iterrows():
         table_data.append([str(row.get(col, "")) for col in pdf_cols])
 
-    # Shorter column widths for better fit
-    col_widths = [70, 90, 55, 55, 70, 60, 70][:len(pdf_cols)]
+    # Assign reduced column widths (all columns visible, tighter fit)
+    # If more than 10 columns, use 50px per column, else 65px
+    base_width = 50 if len(pdf_cols) > 10 else 65
+    col_widths = [base_width] * len(pdf_cols)
     table = Table(table_data, colWidths=col_widths)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
@@ -132,10 +135,10 @@ def daily_report_pdf(df, report_date):
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('FONTSIZE', (0,0), (-1,-1), 7),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ROWHEIGHT', (0,0), (-1,-1), 15),
+        ('ROWHEIGHT', (0,0), (-1,-1), 13),
     ]))
     elements.append(table)
     elements.append(Spacer(1, 12))
