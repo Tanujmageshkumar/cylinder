@@ -392,8 +392,7 @@ Thank you.
     st.subheader("📱 Send to WhatsApp")
     st.text_area("Message", whatsapp_msg, height=260)
 
-    open_whatsapp_and_copy(whatsapp_msg, shop["mobile_number"])
-
+    whatsapp_send(whatsapp_msg, shop["mobile_number"])
     # -------- PDF DOWNLOAD --------
     pdf_lines = [
         f"Shop: {shop_name}",
@@ -602,4 +601,5 @@ elif menu == "🏪 Manage Shops":
                     st.rerun()
 
     st.dataframe(pd.DataFrame(shops), use_container_width=True)
+
 
