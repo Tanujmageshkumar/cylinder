@@ -186,9 +186,9 @@ if menu == "🚚 Deliver Cylinders":
 
     delivered = st.number_input("Cylinders Delivered Today", min_value=0, step=1)
     empty_today = st.number_input("Empty Received Today", min_value=0, step=1)
-    price = st.number_input("Price per Cylinder", min_value=0.0, format="%.2f")
-    cash = st.number_input("Cash Paid", min_value=0.0, format="%.2f")
-    upi = st.number_input("UPI Paid", min_value=0.0, format="%.2f")
+    price = st.number_input("Price per Cylinder", min_value=0, step=1, format="%d")
+    cash = st.number_input("Cash Paid", min_value=0, step=1, format="%d")
+    upi = st.number_input("UPI Paid", min_value=0, step=1, format="%d")
 
     today_amt = delivered * price
     total_paid = cash + upi
@@ -229,9 +229,9 @@ elif menu == "🛒 Purchase Cylinders":
 
     purchased = st.number_input("Cylinders Purchased", min_value=0, step=1, format="%d")
     empty_returned = st.number_input("Empty Returned", min_value=0, step=1, format="%d")
-    price = st.number_input("Price per Cylinder", min_value=0.0, format="%.2f")
-    cash = st.number_input("Cash Paid", min_value=0.0, format="%.2f")
-    upi = st.number_input("UPI Paid", min_value=0.0, format="%.2f")
+    price = st.number_input("Price per Cylinder", min_value=0, step=1, format="%d")
+    cash = st.number_input("Cash Paid", min_value=0, step=1, format="%d")
+    upi = st.number_input("UPI Paid", min_value=0, step=1, format="%d")
 
     p_data = supabase.table("cylinder_purchases").select("*").execute().data
     total_outstanding = sum(p["outstanding_amount"] for p in p_data) if p_data else 0
