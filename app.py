@@ -95,27 +95,34 @@ def daily_report_pdf(df, report_date):
     # Try to include: transaction_date, Shop, Delivered, Price, Total Amount, Empty Received, Balance
     # Remove less critical columns (Empty Yet to be Received, Cash, UPI)
     # Rename columns for consistency
+
+    # Rename columns for PDF table
     rename_map = {}
     for col in df.columns:
-        if col.lower().replace(" ", "") == "shop":
+        col_clean = col.lower().replace(" ", "")
+        if col_clean == "transaction_date":
+            rename_map[col] = "Txn_date"
+        elif col_clean == "shop":
             rename_map[col] = "Shop"
-        elif col.lower().replace(" ", "") == "delivered":
+        elif col_clean == "delivered":
             rename_map[col] = "Delivered"
-        elif col.lower().replace(" ", "") in ["price", "cylinderrate"]:
+        elif col_clean in ["price", "cylinderrate"]:
             rename_map[col] = "Price"
-        elif col.lower().replace(" ", "") == "totalamount":
+        elif col_clean == "totalamount":
             rename_map[col] = "Total Amount"
-        elif col.lower().replace(" ", "") == "emptyreceived":
-            rename_map[col] = "Empty Received"
-        elif col.lower().replace(" ", "") in ["balance", "pendingbalance"]:
+        elif col_clean == "emptyreceived":
+            rename_map[col] = "MT picked"
+        elif col_clean in ["emptyyettobereceived", "emptyyet"]:
+            rename_map[col] = "MT balance"
+        elif col_clean == "cash":
+            rename_map[col] = "Cash"
+        elif col_clean == "upi":
+            rename_map[col] = "UPI"
+        elif col_clean == "totalpaid":
+            rename_map[col] = "Total Paid"
+        elif col_clean in ["balance", "pendingbalance"]:
             rename_map[col] = "Balance"
-        elif col.lower().replace(" ", "") in ["transactiondate", "date"]:
-            rename_map[col] = "Date"
     df = df.rename(columns=rename_map)
-
-    # If transaction_date is present, add it to the table
-    if "transaction_date" in df.columns:
-        df["Date"] = df["transaction_date"].astype(str)
 
 
     # Show all columns, reduce width for each
